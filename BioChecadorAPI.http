@@ -1,0 +1,6 @@
+@BioChecadorAPI_HostAddress = http://localhost:5218
+
+GET {{BioChecadorAPI_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
