@@ -1,8 +1,9 @@
 ﻿using BioChecadorAPI.DTOs;
 using BioChecadorAPI.Repositories;
-using static BioChecadorAPI.Helpers.ResponseHelper;
+using BioChecadorAPI.Repository;
+using System.Text;
 using static BioChecadorAPI.Helpers.CaculatorHelper;
-
+using static BioChecadorAPI.Helpers.ResponseHelper;
 
 namespace BioChecadorAPI.Services
 {
@@ -26,6 +27,7 @@ namespace BioChecadorAPI.Services
         {
             var rfcLimpio = dto.Rfc.Trim().ToUpperInvariant();
             var estado = await _amnRepository.ConsultarEstadoPorRfcAsync(rfcLimpio);
+
             if (estado == null)
             {
                 return new ApiResponse<EstadoEmpleadoResponseDto>
@@ -79,11 +81,22 @@ namespace BioChecadorAPI.Services
                 };
             }
 
+            byte[] publicKeyBytes;
+            try
+            {
+                publicKeyBytes = Convert.FromBase64String(dto.PublicKey);
+            }
+            catch
+            {
+                publicKeyBytes = Encoding.UTF8.GetBytes(dto.PublicKey);
+            }
+
             var guardado = await _amnRepository.GuardarBiometriaAsync(
                 rfcLimpio,
                 dto.CredentialId.Trim(),
-                dto.PublicKey.Trim(),
-                dto.Dispositivo
+                publicKeyBytes,
+                dto.Dispositivo,
+                string.Empty
             );
 
             if (!guardado)
@@ -159,10 +172,9 @@ namespace BioChecadorAPI.Services
                 empleado.NumeroCompania,
                 dto.Latitud,
                 dto.Longitud,
+                string.Empty,
                 dto.Dispositivo,
-                dto.TipoMovimiento,
-                distancia,
-                fueraDeRango
+                dto.TipoMovimiento
             );
 
             if (!guardado)

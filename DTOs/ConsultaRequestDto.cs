@@ -20,6 +20,7 @@ namespace BioChecadorAPI.DTOs
         public string PublicKey { get; set; } = string.Empty;
 
         public string Dispositivo { get; set; } = string.Empty;
+        public string UserAgent { get; set; } = string.Empty;
     }
 
     public class EstadoEmpleadoDto
