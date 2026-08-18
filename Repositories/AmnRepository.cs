@@ -1,5 +1,6 @@
 ﻿using BioChecadorAPI.Data;
 using BioChecadorAPI.DTOs;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.Data.SqlClient;
 using System.Data;
 
@@ -8,7 +9,9 @@ namespace BioChecadorAPI.Repositories
     public interface IAmnRepository
     {
         Task<EstadoEmpleadoResponseDto?> ConsultarEstadoPorRfcAsync(string rfc);
-        Task<bool> GuardarBiometriaAsync(string rfc, string credentialId, string publicKey, string dispositivo);
+        Task<bool> GuardarBiometriaAsync(string rfc, string credentialId, byte[] publicKey, string dispositivoNombre, string userAgent);
+        Task<bool> InsertarChecadaAsync(string rfc, int numeroCompania, decimal latitud, decimal longitud, string userAgent, string dispositivoNombre, string tipoMovimiento);
+        Task<bool> ValidarCredencialBiometricaAsync(string rfc, string credentialId);
     }
 
     public class AmnRepository : IAmnRepository
@@ -54,16 +57,49 @@ namespace BioChecadorAPI.Repositories
             };
         }
 
-        public async Task<bool> GuardarBiometriaAsync(string rfc, string credentialId, string publicKey, string dispositivo)
+        public async Task<bool> GuardarBiometriaAsync(string rfc, string credentialId, byte[] publicKey, string dispositivoNombre, string userAgent)
         {
             using var conn = (SqlConnection)_connectionFactory.CreateConnection();
-            const string query = @"INSERT INTO AMN_Biometria (RFC, Credential_Id, Public_Key, Dispositivo, Fecha_Registro, Baja)
-            VALUES (@rfc, @credentialId, @publicKey, @dispositivo, GETDATE(), '')";
+            const string query = @"INSERT INTO AMN_Biometria  (RFC, Credential_Id, Public_Key, Sign_Count, Dispositivo_Nombre, Dispositivo_User_Agent, Fecha_Alta, Baja)
+            VALUES (@rfc, @credentialId, @publicKey, 0, @dispositivoNombre, @userAgent, CONVERT(VARCHAR(30), GETDATE(), 120), '')";
+            using var cmd = new SqlCommand(query, conn);
+            cmd.Parameters.Add("@rfc", SqlDbType.VarChar, 13).Value = rfc;
+            cmd.Parameters.Add("@credentialId", SqlDbType.VarChar, 255).Value = credentialId;
+            cmd.Parameters.Add("@publicKey", SqlDbType.VarBinary, -1).Value = publicKey;
+            cmd.Parameters.Add("@dispositivoNombre", SqlDbType.VarChar, 150).Value = dispositivoNombre ?? string.Empty;
+            cmd.Parameters.Add("@userAgent", SqlDbType.VarChar, 500).Value = userAgent ?? string.Empty;
+
+            await conn.OpenAsync();
+            var rows = await cmd.ExecuteNonQueryAsync();
+            return rows > 0;
+        }
+
+        public async Task<bool> ValidarCredencialBiometricaAsync(string rfc, string credentialId)
+        {
+            using var conn = (SqlConnection)_connectionFactory.CreateConnection();
+            const string query = @"SELECT COUNT(1) FROM AMN_Biometria 
+            WHERE RFC = @rfc AND Credential_Id = @credentialId AND Baja = ''";
             using var cmd = new SqlCommand(query, conn);
             cmd.Parameters.Add("@rfc", SqlDbType.VarChar, 13).Value = rfc;
             cmd.Parameters.Add("@credentialId", SqlDbType.VarChar, 500).Value = credentialId;
-            cmd.Parameters.Add("@publicKey", SqlDbType.VarChar, -1).Value = publicKey;
-            cmd.Parameters.Add("@dispositivo", SqlDbType.VarChar, 255).Value = string.IsNullOrWhiteSpace(dispositivo) ? (object)DBNull.Value : dispositivo.Trim();
+            await conn.OpenAsync();
+            var count = (int?)await cmd.ExecuteScalarAsync() ?? 0;
+            return count > 0;
+        }
+
+        public async Task<bool> InsertarChecadaAsync(string rfc, int numeroCompania, decimal latitud, decimal longitud, string userAgent, string dispositivoNombre, string tipoMovimiento)
+        {
+            using var conn = (SqlConnection)_connectionFactory.CreateConnection();
+            const string query = @"INSERT INTO AMN_Registros_Checador  (RFC, Numero_Compañia, Fecha_Hora, Latitud, Longitud, Dispositivo_User_Agent, Dispositivo_Nombre, Tipo_Movimiento, Firma_Valida) 
+            VALUES (@rfc, @compania, CONVERT(VARCHAR(30), GETDATE(), 120), @latitud, @longitud, @userAgent, @dispositivoNombre, @tipo, 'S')";
+            using var cmd = new SqlCommand(query, conn);
+            cmd.Parameters.Add("@rfc", SqlDbType.VarChar, 13).Value = rfc;
+            cmd.Parameters.Add("@compania", SqlDbType.Int).Value = numeroCompania;
+            cmd.Parameters.Add("@latitud", SqlDbType.Decimal).Value = latitud;
+            cmd.Parameters.Add("@longitud", SqlDbType.Decimal).Value = longitud;
+            cmd.Parameters.Add("@userAgent", SqlDbType.VarChar, 500).Value = userAgent ?? string.Empty;
+            cmd.Parameters.Add("@dispositivoNombre", SqlDbType.VarChar, 150).Value = dispositivoNombre ?? string.Empty;
+            cmd.Parameters.Add("@tipo", SqlDbType.VarChar, 20).Value = tipoMovimiento.ToUpperInvariant();
             await conn.OpenAsync();
             var rows = await cmd.ExecuteNonQueryAsync();
             return rows > 0;

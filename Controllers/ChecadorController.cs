@@ -74,6 +74,31 @@ namespace BioChecadorAPI.Controllers
             return Ok(respuesta);
         }
 
+        [HttpPost("marcar")]
+        [ProducesResponseType(typeof(ApiResponse<RegistroChecadaResponseDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<RegistroChecadaResponseDto>), StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> Marcar([FromBody] MarcarAsistenciaDto dto)
+        {
+            if (!ModelState.IsValid)
+            {
+                var errores = string.Join(" | ", ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage));
+
+                return BadRequest(new ApiResponse<RegistroChecadaResponseDto>
+                {
+                    Success = false,
+                    Message = errores
+                });
+            }
+            var respuesta = await _checadorService.MarcarAsistenciaAsync(dto);
+            if (!respuesta.Success)
+            {
+                return BadRequest(respuesta);
+            }
+            return Ok(respuesta);
+        }
+
         //----------------
     }
 }
