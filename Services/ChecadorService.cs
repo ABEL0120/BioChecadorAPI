@@ -26,7 +26,8 @@ namespace BioChecadorAPI.Services
         public async Task<ApiResponse<EstadoEmpleadoResponseDto>> VerificarRfcAsync(ConsultaRequestDto dto)
         {
             var rfcLimpio = dto.Rfc.Trim().ToUpperInvariant();
-            var estado = await _amnRepository.ConsultarEstadoPorRfcAsync(rfcLimpio);
+            var dispositivo = dto.Dispositivo.Trim().ToUpperInvariant();
+            var estado = await _amnRepository.ConsultarEstadoPorRfcAsync(rfcLimpio, dispositivo);
 
             if (estado == null)
             {
@@ -59,8 +60,9 @@ namespace BioChecadorAPI.Services
         public async Task<ApiResponse<bool>> EnrolarBiometriaAsync(EnrolarBiometriaDto dto)
         {
             var rfcLimpio = dto.Rfc.Trim().ToUpperInvariant();
+            var dispositivo = dto.Dispositivo.Trim().ToUpperInvariant();
 
-            var empleado = await _amnRepository.ConsultarEstadoPorRfcAsync(rfcLimpio);
+            var empleado = await _amnRepository.ConsultarEstadoPorRfcAsync(rfcLimpio, dispositivo);
             if (empleado == null)
             {
                 return new ApiResponse<bool>
@@ -71,15 +73,15 @@ namespace BioChecadorAPI.Services
                 };
             }
 
-            if (empleado.TieneBiometria)
-            {
-                return new ApiResponse<bool>
-                {
-                    Success = false,
-                    Message = "El empleado ya cuenta con biometría registrada.",
-                    Data = false
-                };
-            }
+            //if (empleado.TieneBiometria)
+            //{
+            //    return new ApiResponse<bool>
+            //    {
+            //        Success = false,
+            //        Message = "El empleado ya cuenta con biometría registrada.",
+            //        Data = false
+            //    };
+            //}
 
             byte[] publicKeyBytes;
             try
@@ -120,8 +122,9 @@ namespace BioChecadorAPI.Services
         public async Task<ApiResponse<RegistroChecadaResponseDto>> MarcarAsistenciaAsync(MarcarAsistenciaDto dto)
         {
             var rfcLimpio = dto.Rfc.Trim().ToUpperInvariant();
+            var dispositivo = dto.Dispositivo.Trim().ToUpperInvariant();
 
-            var empleado = await _amnRepository.ConsultarEstadoPorRfcAsync(rfcLimpio);
+            var empleado = await _amnRepository.ConsultarEstadoPorRfcAsync(rfcLimpio, dispositivo);
             if (empleado == null)
             {
                 return new ApiResponse<RegistroChecadaResponseDto>
@@ -165,6 +168,39 @@ namespace BioChecadorAPI.Services
                     Success = false,
                     Message = $"Ubicación fuera del rango permitido. Distancia: {Math.Round(distancia, 2)}m (Máximo: {empleado.RadioToleranciaMetros}m)."
                 };
+            }
+
+            var ultimoMovimientoHoy = await _amnRepository.ObtenerUltimoMovimientoHoyAsync(rfcLimpio);
+            if (dto.TipoMovimiento.ToUpperInvariant() == "ENTRADA")
+            {
+                if (ultimoMovimientoHoy == "ENTRADA")
+                {
+                    return new ApiResponse<RegistroChecadaResponseDto>
+                    {
+                        Success = false,
+                        Message = "Ya tienes una ENTRADA registrada. No puedes registrar doble entrada sin haber salido."
+                    };
+                }
+            }
+            else if (dto.TipoMovimiento.ToUpperInvariant() == "SALIDA")
+            {
+                if (string.IsNullOrEmpty(ultimoMovimientoHoy))
+                {
+                    return new ApiResponse<RegistroChecadaResponseDto>
+                    {
+                        Success = false,
+                        Message = "No puedes registrar tu SALIDA porque no tienes una ENTRADA registrada el día de hoy."
+                    };
+                }
+
+                if (ultimoMovimientoHoy == "SALIDA")
+                {
+                    return new ApiResponse<RegistroChecadaResponseDto>
+                    {
+                        Success = false,
+                        Message = "Ya tienes una SALIDA registrada. No puedes registrar doble salida consecutiva."
+                    };
+                }
             }
 
             var guardado = await _amnRepository.InsertarChecadaAsync(

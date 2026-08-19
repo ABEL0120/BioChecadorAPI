@@ -5,6 +5,7 @@ namespace BioChecadorAPI.DTOs
     public class ConsultaRequestDto
     {
         public string Rfc { get; set; } = string.Empty;
+        public string Dispositivo { get; set; } = string.Empty;
     }
 
     public class EnrolarBiometriaDto
@@ -69,6 +70,7 @@ namespace BioChecadorAPI.DTOs
     public class EstadoEmpleadoResponseDto
     {
         public bool Existe { get; set; }
+        public string UltimoMovimientoHoy { get; set; } = String.Empty;
         public bool TieneBiometria { get; set; }
         public string Mensaje { get; set; } = string.Empty;
         public string Rfc { get; set; } = string.Empty;

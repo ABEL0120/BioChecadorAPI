@@ -3,9 +3,9 @@ using BioChecadorAPI.Data;
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowReact", policy =>
+    options.AddPolicy("AllowAll", policy =>
     {
-        policy.WithOrigins("http://localhost:5173", "https://localhost:5173")
+        policy.AllowAnyOrigin()
               .AllowAnyHeader()
               .AllowAnyMethod();
     });
@@ -30,7 +30,7 @@ if (app.Environment.IsDevelopment())
 }
 app.UseRouting();
 app.UseHttpsRedirection();
-app.UseCors("AllowReact");
+app.UseCors("AllowAll");
 app.UseAuthorization();
 app.MapControllers();
 app.Run();
