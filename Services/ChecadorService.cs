@@ -2,14 +2,14 @@
 using BioChecadorAPI.Repositories;
 using BioChecadorAPI.Repository;
 using System.Text;
-using static BioChecadorAPI.Helpers.CaculatorHelper;
+using static BioChecadorAPI.Helpers.ChecadorHelper;
 using static BioChecadorAPI.Helpers.ResponseHelper;
 
 namespace BioChecadorAPI.Services
 {
     public interface IChecadorService
     {
-        Task<ApiResponse<EstadoEmpleadoResponseDto>> VerificarRfcAsync(ConsultaRequestDto dto);
+        Task<ApiResponse<EstadoEmpleadoResponseDto>> VerificarRfcAsync(VerificarRfcRequestDto request);
         Task<ApiResponse<bool>> EnrolarBiometriaAsync(EnrolarBiometriaDto dto);
         Task<ApiResponse<RegistroChecadaResponseDto>> MarcarAsistenciaAsync(MarcarAsistenciaDto dto);
     }
@@ -23,37 +23,36 @@ namespace BioChecadorAPI.Services
             _amnRepository = amnRepository;
         }
 
-        public async Task<ApiResponse<EstadoEmpleadoResponseDto>> VerificarRfcAsync(ConsultaRequestDto dto)
+        public async Task<ApiResponse<EstadoEmpleadoResponseDto>> VerificarRfcAsync(VerificarRfcRequestDto request)
         {
-            var rfcLimpio = dto.Rfc.Trim().ToUpperInvariant();
-            var dispositivo = dto.Dispositivo.Trim().ToUpperInvariant();
-            var estado = await _amnRepository.ConsultarEstadoPorRfcAsync(rfcLimpio, dispositivo);
-
-            if (estado == null)
+            if (string.IsNullOrWhiteSpace(request.Rfc))
             {
                 return new ApiResponse<EstadoEmpleadoResponseDto>
                 {
                     Success = false,
-                    Message = "Empleado no registrado",
-                    Data = new EstadoEmpleadoResponseDto
-                    {
-                        Existe = false,
-                        TieneBiometria = false,
-                        Mensaje = "Empleado no registrado",
-                        Rfc = rfcLimpio
-                    }
+                    Message = "El RFC es obligatorio.",
+                    Data = null
                 };
             }
 
-            estado.Mensaje = estado.TieneBiometria
-                ? "Empleado verificado, listo para marcar asistencia."
-                : "Empleado encontrado sin biometría registrada. Se requiere enrolamiento.";
+            string rfcLimpio = request.Rfc.Trim().ToUpperInvariant();
+            var empleado = await _amnRepository.ConsultarEstadoPorRfcAsync(rfcLimpio, request.DispositivoNombre);
+
+            if (empleado == null)
+            {
+                return new ApiResponse<EstadoEmpleadoResponseDto>
+                {
+                    Success = false,
+                    Message = "El RFC ingresado no se encuentra registrado en el sistema.",
+                    Data = null
+                };
+            }
 
             return new ApiResponse<EstadoEmpleadoResponseDto>
             {
                 Success = true,
-                Message = estado.Mensaje,
-                Data = estado
+                Message = "Empleado verificado con éxito.",
+                Data = empleado
             };
         }
 

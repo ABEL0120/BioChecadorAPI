@@ -20,18 +20,19 @@ namespace BioChecadorAPI.Controllers
         [ProducesResponseType(typeof(ApiResponse<EstadoEmpleadoResponseDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<EstadoEmpleadoResponseDto>), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ApiResponse<EstadoEmpleadoResponseDto>), StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> VerificarRfc([FromBody] ConsultaRequestDto dto)
+        public async Task<IActionResult> VerificarRfc([FromBody] VerificarRfcRequestDto dto)
         {
             if (!ModelState.IsValid)
             {
                 var errores = string.Join(" | ", ModelState.Values
                     .SelectMany(v => v.Errors)
-                    .Select(e => e.ErrorMessage));
+                    .Select(e => !string.IsNullOrWhiteSpace(e.ErrorMessage) ? e.ErrorMessage : e.Exception?.Message));
 
                 return BadRequest(new ApiResponse<EstadoEmpleadoResponseDto>
                 {
                     Success = false,
-                    Message = errores
+                    Message = string.IsNullOrWhiteSpace(errores) ? "Parámetros de solicitud inválidos." : errores,
+                    Data = null
                 });
             }
 
