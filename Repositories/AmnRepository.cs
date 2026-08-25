@@ -16,6 +16,7 @@ namespace BioChecadorAPI.Repositories
         Task<bool> InsertarChecadaAsync(string rfc, int numeroCompania, decimal latitud, decimal longitud, string userAgent, string dispositivoNombre, string tipoMovimiento);
         Task<bool> ValidarCredencialBiometricaAsync(string rfc, string credentialId);
         Task<string> ObtenerUltimoMovimientoHoyAsync(string rfc);
+        Task<HistoricoAMNResponse[]> ObtenerHistoricoAmnAsync(string rfc, int numeroCompania);
     }
 
     public class AmnRepository : IAmnRepository
@@ -165,6 +166,35 @@ namespace BioChecadorAPI.Repositories
             await conn.OpenAsync();
             var result = await cmd.ExecuteScalarAsync();
             return result?.ToString()?.ToUpperInvariant() ?? string.Empty;
+        }
+
+        public async Task<HistoricoAMNResponse[]> ObtenerHistoricoAmnAsync(string rfc, int numeroCompania)
+        {
+            var resultado = new List<HistoricoAMNResponse>();
+            using var conn = (SqlConnection)_connectionFactory.CreateConnection();
+            const string query = @"SELECT Numero, RFC, Numero_Compañia, Fecha_Hora, Latitud, Longitud, Dispositivo_Nombre, Tipo_Movimiento FROM AMN_Registros_Checador 
+                                 WHERE RFC = @rfc AND Numero_Compañia = @compañia;";
+            using var cmd = new SqlCommand(query, conn);
+            cmd.Parameters.Add("@rfc", SqlDbType.VarChar, 13).Value = rfc;
+            cmd.Parameters.Add("@compañia", SqlDbType.Int).Value = numeroCompania;
+            await conn.OpenAsync();
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                resultado.Add(new HistoricoAMNResponse
+                {
+                    Numero = reader.IsDBNull(0) ? 0 : reader.GetInt32(0),
+                    Rfc = reader.IsDBNull(1) ? string.Empty : reader.GetString(1),
+                    NumeroCompania = reader.IsDBNull(2) ? 0 : reader.GetInt32(2),
+                    FechaHora = reader.IsDBNull(3) ? string.Empty : reader[3].ToString() ?? string.Empty,
+                    Latitud = reader.IsDBNull(4) ? 0m : reader.GetDecimal(4),
+                    Longitud = reader.IsDBNull(5) ? 0m : reader.GetDecimal(5),
+                    DispositivoNombre = reader.IsDBNull(6) ? string.Empty : reader.GetString(6),
+                    TipoMovimiento = reader.IsDBNull(7) ? string.Empty : reader.GetString(7)
+                });
+            }
+
+            return resultado.ToArray();
         }
 
     }

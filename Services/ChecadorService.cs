@@ -12,6 +12,7 @@ namespace BioChecadorAPI.Services
         Task<ApiResponse<EstadoEmpleadoResponseDto>> VerificarRfcAsync(VerificarRfcRequestDto request);
         Task<ApiResponse<bool>> EnrolarBiometriaAsync(EnrolarBiometriaDto dto);
         Task<ApiResponse<RegistroChecadaResponseDto>> MarcarAsistenciaAsync(MarcarAsistenciaDto dto);
+        Task<ApiResponse<HistoricoAMNResponse[]>> ConsultarHistoricoAMN(string rfc, int numeroCompania);
     }
 
     public class ChecadorService : IChecadorService
@@ -236,6 +237,38 @@ namespace BioChecadorAPI.Services
                     Mensaje = "Checada procesada con éxito."
                 }
             };
+        }
+
+        public async Task<ApiResponse<HistoricoAMNResponse[]>> ConsultarHistoricoAMN(string rfc, int numeroCompania)
+        {
+            try
+            {
+                var registros = await _amnRepository.ObtenerHistoricoAmnAsync(rfc, numeroCompania);
+                if (registros == null || registros.Length == 0)
+                {
+                    return new ApiResponse<HistoricoAMNResponse[]>
+                    {
+                        Success = true,
+                        Message = "No se encontraron registros para los criterios especificados.",
+                        Data = Array.Empty<HistoricoAMNResponse>()
+                    };
+                }
+                return new ApiResponse<HistoricoAMNResponse[]>
+                {
+                    Success = true,
+                    Message = "Consulta exitosa.",
+                    Data = registros
+                };
+            }
+            catch (Exception ex)
+            {
+                return new ApiResponse<HistoricoAMNResponse[]>
+                {
+                    Success = false,
+                    Message = $"Error al obtener el historial: {ex.Message}",
+                    Data = Array.Empty<HistoricoAMNResponse>()
+                };
+            }
         }
     }
 }

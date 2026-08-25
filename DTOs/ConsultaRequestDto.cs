@@ -106,4 +106,26 @@ namespace BioChecadorAPI.DTOs
         public int RadioToleranciaMetros { get; set; } = 150;
         public TurnoDetalleDto? Horario { get; set; }
     }
+
+    public class HistoricoAMNDto
+    {
+        [Required(ErrorMessage = "El RFC es obligatorio.")]
+        [StringLength(13, MinimumLength = 12, ErrorMessage = "El RFC debe tener 12 o 13 caracteres.")]
+        [RegularExpression(@"^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$", ErrorMessage = "El RFC no tiene un formato válido.")]
+        public string Rfc { get; set; } = string.Empty;
+        [Required(ErrorMessage = "La compañia es obligatoria.")]        
+        public int NumeroCompania { get; set; }
+    }
+
+    public class HistoricoAMNResponse
+    {
+        public int Numero { get; set; }
+        public string Rfc { get; set; } = string.Empty;
+        public int NumeroCompania { get; set; }
+        public string FechaHora { get; set; } = string.Empty;
+        public decimal Latitud { get; set; }
+        public decimal Longitud { get; set; }
+        public string DispositivoNombre { get; set; } = string.Empty;
+        public string TipoMovimiento { get; set; } = string.Empty;
+    }
 }

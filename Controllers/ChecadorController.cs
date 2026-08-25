@@ -100,6 +100,33 @@ namespace BioChecadorAPI.Controllers
             return Ok(respuesta);
         }
 
+        [HttpGet("historico")]
+        [ProducesResponseType(typeof(ApiResponse<HistoricoAMNResponse[]>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<HistoricoAMNResponse[]>), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ApiResponse<HistoricoAMNResponse[]>), StatusCodes.Status500InternalServerError)]
+        public async Task<IActionResult> ObtenerHistorico([FromQuery] HistoricoAMNDto dto)
+        {
+            if (!ModelState.IsValid)
+            {
+                var errores = string.Join(" | ", ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => !string.IsNullOrWhiteSpace(e.ErrorMessage) ? e.ErrorMessage : e.Exception?.Message));
+
+                return BadRequest(new ApiResponse<EstadoEmpleadoResponseDto>
+                {
+                    Success = false,
+                    Message = string.IsNullOrWhiteSpace(errores) ? "Parámetros de solicitud inválidos." : errores,
+                    Data = null
+                });
+            }
+            var resultado = await _checadorService.VerificarRfcAsync(dto);
+            if (!resultado.Success)
+            {
+                return NotFound(resultado);
+            }
+            return Ok(resultado);
+        }
+
         //----------------
     }
 }
