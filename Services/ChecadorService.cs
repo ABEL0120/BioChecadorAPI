@@ -12,7 +12,7 @@ namespace BioChecadorAPI.Services
         Task<ApiResponse<EstadoEmpleadoResponseDto>> VerificarRfcAsync(VerificarRfcRequestDto request);
         Task<ApiResponse<bool>> EnrolarBiometriaAsync(EnrolarBiometriaDto dto);
         Task<ApiResponse<RegistroChecadaResponseDto>> MarcarAsistenciaAsync(MarcarAsistenciaDto dto);
-        Task<ApiResponse<HistoricoAMNResponse[]>> ConsultarHistoricoAMN(string rfc, int numeroCompania);
+        Task<ApiResponse<HistoricoAMNResponse[]>> ConsultarHistoricoAMN(HistoricoAMNDto dto);
     }
 
     public class ChecadorService : IChecadorService
@@ -161,7 +161,7 @@ namespace BioChecadorAPI.Services
             );
 
             var fueraDeRango = distancia > empleado.RadioToleranciaMetros;
-            if (fueraDeRango)
+            if (fueraDeRango && empleado.TrabajoRemoto == "N")
             {
                 return new ApiResponse<RegistroChecadaResponseDto>
                 {
@@ -239,11 +239,11 @@ namespace BioChecadorAPI.Services
             };
         }
 
-        public async Task<ApiResponse<HistoricoAMNResponse[]>> ConsultarHistoricoAMN(string rfc, int numeroCompania)
+        public async Task<ApiResponse<HistoricoAMNResponse[]>> ConsultarHistoricoAMN(HistoricoAMNDto dto)
         {
             try
             {
-                var registros = await _amnRepository.ObtenerHistoricoAmnAsync(rfc, numeroCompania);
+                var registros = await _amnRepository.ObtenerHistoricoAmnAsync(dto);
                 if (registros == null || registros.Length == 0)
                 {
                     return new ApiResponse<HistoricoAMNResponse[]>

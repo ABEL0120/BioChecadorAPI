@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using System.Runtime.CompilerServices;
 
 namespace BioChecadorAPI.DTOs
 {
@@ -26,6 +27,7 @@ namespace BioChecadorAPI.DTOs
     {
         public string Descripcion { get; set; } = string.Empty;
         public string DiasPatron { get; set; } = string.Empty;
+        public string SecuenciaDias { get; set; } = string.Empty;
         public List<HorarioDiaDto> Dias { get; set; } = new();
     }
 
@@ -77,7 +79,8 @@ namespace BioChecadorAPI.DTOs
         public decimal Longitud { get; set; }
 
         public string Dispositivo { get; set; } = string.Empty;
-        public string TipoMovimiento { get; set; } = "Entrada";
+        public string TipoMovimiento { get; set; } = "ENTRADA";
+        public string EsRemoto { get; set; } = string.Empty;
     }
 
     public class RegistroChecadaResponseDto
@@ -104,6 +107,7 @@ namespace BioChecadorAPI.DTOs
         public decimal LatitudEmpresa { get; set; }
         public decimal LongitudEmpresa { get; set; }
         public int RadioToleranciaMetros { get; set; } = 150;
+        public string TrabajoRemoto { get; set; } = string.Empty;
         public TurnoDetalleDto? Horario { get; set; }
     }
 

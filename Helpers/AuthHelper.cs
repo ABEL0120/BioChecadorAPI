@@ -7,10 +7,20 @@ namespace BioChecadorAPI.Helpers
 {
     public static class AuthHelper
     {
-        public static string HashearClave(string clave)
+        public static string Encripta(string texto, string clave = "NOM_2020")
         {
-            var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(clave));
-            return Convert.ToHexString(bytes);
+            if (string.IsNullOrEmpty(texto))
+                return string.Empty;
+            var sb = new StringBuilder();
+            int j = 0;
+            for (int i = 0; i < texto.Length; i++)
+            {
+                char keyChar = clave[j % clave.Length];
+                int xorVal = texto[i] ^ keyChar;
+                sb.Append(xorVal.ToString("X2"));
+                j++;
+            }
+            return sb.ToString();
         }
 
         public static string DesEncripta(string pass, string clave = "NOM_2020")

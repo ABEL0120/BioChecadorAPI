@@ -40,7 +40,8 @@ namespace BioChecadorAPI.Helpers
             var turno = new TurnoDetalleDto
             {
                 Descripcion = descripcion,
-                DiasPatron = patronDias
+                DiasPatron = patronDias,
+                SecuenciaDias = claveInicio
             };
             for (int i = 0; i < 7; i++)
             {

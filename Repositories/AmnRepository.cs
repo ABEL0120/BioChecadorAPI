@@ -16,7 +16,7 @@ namespace BioChecadorAPI.Repositories
         Task<bool> InsertarChecadaAsync(string rfc, int numeroCompania, decimal latitud, decimal longitud, string userAgent, string dispositivoNombre, string tipoMovimiento);
         Task<bool> ValidarCredencialBiometricaAsync(string rfc, string credentialId);
         Task<string> ObtenerUltimoMovimientoHoyAsync(string rfc);
-        Task<HistoricoAMNResponse[]> ObtenerHistoricoAmnAsync(string rfc, int numeroCompania);
+        Task<HistoricoAMNResponse[]> ObtenerHistoricoAmnAsync(HistoricoAMNDto dto);
     }
 
     public class AmnRepository : IAmnRepository
@@ -32,7 +32,7 @@ namespace BioChecadorAPI.Repositories
         {
             using var conn = (SqlConnection)_connectionFactory.CreateConnection();
             const string query = @"SELECT ISNULL(a.M105, '') AS RFC, ISNULL(a.M104, '') AS Nombre, ISNULL(a.Compañia, 0) AS NumeroCompania, ISNULL(c.Razon_Social, '') AS RazonSocial, ISNULL(c.Adicional, '') AS Adicional, ISNULL(c.Latitud, 0) AS LatitudEmpresa, ISNULL(c.Longitud, 0) AS LongitudEmpresa, ISNULL(c.Radio_Tolerancia_Metros, 150) AS RadioToleranciaMetros, ISNULL(c.Inicio_Nomina, '') AS InicioNomina,
-            CASE WHEN EXISTS (SELECT 1 FROM AMN_Biometria b WHERE b.RFC = a.M105 AND b.Dispositivo_Nombre = @dispositivo AND b.Baja = '') THEN 1 ELSE 0 END AS TieneBiometria,
+            CASE WHEN EXISTS (SELECT 1 FROM AMN_Biometria b WHERE b.RFC = a.M105 AND b.Dispositivo_Nombre = @dispositivo AND b.Baja = '') THEN 1 ELSE 0 END AS TieneBiometria, ISNULL(a.Trabajo_Remoto, '') AS TrabajoRemoto,
             t.D147 AS TurnoDescripcion, t.T102 AS TurnoPatron, t.*
             FROM AMN a LEFT JOIN Compañias c ON a.Compañia = c.Numero_Compañia LEFT JOIN Turnos t ON a.Compañia = t.Compañia AND a.M147 = t.M147
             WHERE a.M105 = @rfc";
@@ -50,6 +50,7 @@ namespace BioChecadorAPI.Repositories
             int radioToleranciaMetros;
             string inicioNomina;
             bool tieneBiometria;
+            string TrabajoRemoto;
             TurnoDetalleDto? horario = null;
 
             using (var reader = await cmd.ExecuteReaderAsync())
@@ -69,8 +70,9 @@ namespace BioChecadorAPI.Repositories
                 radioToleranciaMetros = reader.GetInt32(7);
                 inicioNomina = reader.GetString(8).Trim();
                 tieneBiometria = reader.GetInt32(9) == 1;
+                TrabajoRemoto = reader.GetString(10).Trim();
 
-                if (!reader.IsDBNull(10))
+                if (!reader.IsDBNull(11))
                 {
                     horario = MapearTurno(reader, inicioNomina);
                 }
@@ -93,6 +95,7 @@ namespace BioChecadorAPI.Repositories
                 LatitudEmpresa = latitudEmpresa,
                 LongitudEmpresa = longitudEmpresa,
                 RadioToleranciaMetros = radioToleranciaMetros,
+                TrabajoRemoto = TrabajoRemoto,
                 Horario = horario
             };
         }
@@ -168,15 +171,15 @@ namespace BioChecadorAPI.Repositories
             return result?.ToString()?.ToUpperInvariant() ?? string.Empty;
         }
 
-        public async Task<HistoricoAMNResponse[]> ObtenerHistoricoAmnAsync(string rfc, int numeroCompania)
+        public async Task<HistoricoAMNResponse[]> ObtenerHistoricoAmnAsync(HistoricoAMNDto dto)
         {
             var resultado = new List<HistoricoAMNResponse>();
             using var conn = (SqlConnection)_connectionFactory.CreateConnection();
             const string query = @"SELECT Numero, RFC, Numero_Compañia, Fecha_Hora, Latitud, Longitud, Dispositivo_Nombre, Tipo_Movimiento FROM AMN_Registros_Checador 
                                  WHERE RFC = @rfc AND Numero_Compañia = @compañia;";
             using var cmd = new SqlCommand(query, conn);
-            cmd.Parameters.Add("@rfc", SqlDbType.VarChar, 13).Value = rfc;
-            cmd.Parameters.Add("@compañia", SqlDbType.Int).Value = numeroCompania;
+            cmd.Parameters.Add("@rfc", SqlDbType.VarChar, 13).Value = dto.Rfc;
+            cmd.Parameters.Add("@compañia", SqlDbType.Int).Value = dto.NumeroCompania;
             await conn.OpenAsync();
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())

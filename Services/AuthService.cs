@@ -15,7 +15,7 @@ namespace BioChecadorAPI.Services
     public class AuthService : IAuthService
     {
         private readonly IUsuarioRepository _usuarioRepository;
-        private static string HashearClave(string clave) => AuthHelper.HashearClave(clave);
+        private static string HashearClave(string clave) => AuthHelper.Encripta(clave);
 
         public AuthService(IUsuarioRepository usuarioRepository)
         {
