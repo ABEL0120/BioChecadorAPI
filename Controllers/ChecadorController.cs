@@ -125,6 +125,31 @@ namespace BioChecadorAPI.Controllers
             return Ok(respuesta);
         }
 
+        [HttpPost("estatus-solicitud")]
+        [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> SolicitudEmpleado([FromBody] SolicitudCreacionDto dto)
+        {
+            if (!ModelState.IsValid)
+            {
+                var errores = string.Join(" | ", ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage));
+                return BadRequest(new ApiResponse<bool>
+                {
+                    Success = false,
+                    Message = errores,
+                    Data = false
+                });
+            }
+            var respuesta = await _checadorService.ConsultarSolicitudEmpleado(dto);
+            if (!respuesta.Success)
+            {
+                return BadRequest(respuesta);
+            }
+            return Ok(respuesta);
+        }
+
         [HttpPost("historico")]
         [ProducesResponseType(typeof(ApiResponse<HistoricoAMNResponse[]>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<HistoricoAMNResponse[]>), StatusCodes.Status400BadRequest)]

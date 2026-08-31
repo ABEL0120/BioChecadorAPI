@@ -177,7 +177,7 @@ namespace BioChecadorAPI.Repositories
             int nuevoNumero = ultimoId + 1;
             string fechaActual = FormatearFecha(DateTime.Now);
             string fechaExpiracion = FormatearFecha(DateTime.Now.AddDays(1));
-            const string query = @"INSERT INTO AMN_Solicitudes (Numero, RFC, Numero_Compañia, Motivo, Fecha_Solicitud, Fecha_Accion, Fecha_Expiracion, Estado_Solicitud) VALUES (@numero, @rfc, @compania, @motivo, @fechaSolicitud, @fechaAccion, @fechaExpiracion, @estado)";
+            const string query = @"INSERT INTO AMN_Solicitudes (Numero, RFC, Numero_Compañia, Motivo, Fecha_Solicitud, Fecha_Accion, Fecha_Expiracion, Estado_Solicitud, Tipo_Dispositivo) VALUES (@numero, @rfc, @compania, @motivo, @fechaSolicitud, @fechaAccion, @fechaExpiracion, @estado, @tipoDispositivo)";
             using var cmd = new SqlCommand(query, conn);
             cmd.Parameters.Add("@numero", SqlDbType.Int).Value = nuevoNumero;
             cmd.Parameters.Add("@rfc", SqlDbType.VarChar, 13).Value = dto.Rfc.Trim().ToUpperInvariant();
@@ -187,6 +187,7 @@ namespace BioChecadorAPI.Repositories
             cmd.Parameters.Add("@fechaAccion", SqlDbType.VarChar, 30).Value = string.Empty;
             cmd.Parameters.Add("@fechaExpiracion", SqlDbType.VarChar, 30).Value = fechaExpiracion.Trim();
             cmd.Parameters.Add("@estado", SqlDbType.VarChar, 1).Value = "P";
+            cmd.Parameters.Add("@tipoDispositivo", SqlDbType.VarChar, 150).Value = dto.TipoDispositivo.Trim();
             var rows = await cmd.ExecuteNonQueryAsync();
             return rows > 0 ? fechaExpiracion : string.Empty;
         }

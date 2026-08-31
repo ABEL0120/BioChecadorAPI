@@ -14,6 +14,7 @@ namespace BioChecadorAPI.Services
         Task<ApiResponse<RegistroChecadaResponseDto>> MarcarAsistenciaAsync(MarcarAsistenciaDto dto);
         Task<ApiResponse<HistoricoAMNResponse[]>> ConsultarHistoricoAMN(HistoricoAMNDto dto);
         Task<ApiResponse<SolicitudResponseDto>> MandarSolicitudAMN(SolicitudCreacionDto dto);
+        Task<ApiResponse<SolicitudResponseDto>> ConsultarSolicitudEmpleado(SolicitudCreacionDto dto);
     }
 
     public class ChecadorService : IChecadorService
@@ -149,7 +150,7 @@ namespace BioChecadorAPI.Services
                     Success = true,
                     Message = $"Solicitud enviada correctamente. Su solicitud expira en 1 dia habil",
                     Data = new SolicitudResponseDto
-                    {                       
+                    {
                         FechaExpiracion = fechaExpiracion
                     }
                 };
@@ -161,6 +162,28 @@ namespace BioChecadorAPI.Services
                     Success = false,
                     Message = $"Error al intentar enviar la solicitud.",
                     Data = { }
+                };
+            }
+        }
+
+        public async Task<ApiResponse<SolicitudResponseDto>> ConsultarSolicitudEmpleado(SolicitudCreacionDto dto)
+        {
+            bool solicitudExistente = await _amnRepository.ConsultarExistenciaSolicitud(dto);
+            if (solicitudExistente)
+            {
+                return new ApiResponse<SolicitudResponseDto>
+                {
+                    Success = false,
+                    Message = "Ya cuentas con una solicitud pendiente en revisión. Por favor, espera la respuesta del administrador. Si transcurren 24 horas sin respuesta, podrás enviar una nueva solicitud."
+                };
+            }
+            else
+            {
+                return new ApiResponse<SolicitudResponseDto>
+                {
+                    Success = true,
+                    Message = "No hay solicitudes pendientes.",
+                    Data = null
                 };
             }
         }
@@ -217,36 +240,14 @@ namespace BioChecadorAPI.Services
             }
 
             var ultimoMovimientoHoy = await _amnRepository.ObtenerUltimoMovimientoHoyAsync(rfcLimpio);
-            if (dto.TipoMovimiento.ToUpperInvariant() == "ENTRADA" || dto.TipoMovimiento.ToUpperInvariant() == "RETARDO")
+            var (esValido, mensajeError) = ValidarTransicion(ultimoMovimientoHoy, dto.TipoMovimiento);
+            if (!esValido)
             {
-                if (ultimoMovimientoHoy == "ENTRADA")
+                return new ApiResponse<RegistroChecadaResponseDto>
                 {
-                    return new ApiResponse<RegistroChecadaResponseDto>
-                    {
-                        Success = false,
-                        Message = "Ya tienes una ENTRADA registrada. No puedes registrar doble entrada sin haber salido."
-                    };
-                }
-            }
-            else if (dto.TipoMovimiento.ToUpperInvariant() == "SALIDA")
-            {
-                if (string.IsNullOrEmpty(ultimoMovimientoHoy))
-                {
-                    return new ApiResponse<RegistroChecadaResponseDto>
-                    {
-                        Success = false,
-                        Message = "No puedes registrar tu SALIDA porque no tienes una ENTRADA registrada el día de hoy."
-                    };
-                }
-
-                if (ultimoMovimientoHoy == "SALIDA")
-                {
-                    return new ApiResponse<RegistroChecadaResponseDto>
-                    {
-                        Success = false,
-                        Message = "Ya tienes una SALIDA registrada. No puedes registrar doble salida consecutiva."
-                    };
-                }
+                    Success = false,
+                    Message = mensajeError
+                };
             }
 
             var guardado = await _amnRepository.InsertarChecadaAsync(

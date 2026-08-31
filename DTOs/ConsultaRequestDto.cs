@@ -118,7 +118,7 @@ namespace BioChecadorAPI.DTOs
         [StringLength(13, MinimumLength = 12, ErrorMessage = "El RFC debe tener 12 o 13 caracteres.")]
         [RegularExpression(@"^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$", ErrorMessage = "El RFC no tiene un formato válido.")]
         public string Rfc { get; set; } = string.Empty;
-        [Required(ErrorMessage = "La compañia es obligatoria.")]        
+        [Required(ErrorMessage = "La compañia es obligatoria.")]
         public int NumeroCompania { get; set; }
     }
 
@@ -146,6 +146,7 @@ namespace BioChecadorAPI.DTOs
         [Required(ErrorMessage = "El motivo es obligatorio.")]
         [StringLength(150, ErrorMessage = "El motivo no puede exceder 150 caracteres.")]
         public string Motivo { get; set; } = string.Empty;
+        public string TipoDispositivo { get; set; } = string.Empty;
     }
 
     public class SolicitudResponseDto

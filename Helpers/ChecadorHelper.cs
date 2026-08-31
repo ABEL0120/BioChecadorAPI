@@ -16,6 +16,26 @@ namespace BioChecadorAPI.Helpers
             ["DOM"] = new[] { "Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado" }
         };
 
+        private static readonly Dictionary<string, HashSet<string>> TransicionesValidas = new(StringComparer.OrdinalIgnoreCase)
+        {
+            [""] = new() { "ENTRADA", "RETARDO" },
+            ["ENTRADA"] = new() { "SALIDA_COMIDA", "SALIDA" },
+            ["RETARDO"] = new() { "SALIDA_COMIDA", "SALIDA" },
+            ["SALIDA_COMIDA"] = new() { "ENTRADA_COMIDA" },
+            ["ENTRADA_COMIDA"] = new() { "SALIDA_COMIDA", "SALIDA" },
+            ["SALIDA"] = new()
+        };
+
+        private static string GenerarMensajeError(string actual, string nuevo) => (actual, nuevo) switch
+        {
+            ("", _) => $"No puedes registrar {nuevo} sin tener una ENTRADA registrada hoy.",
+            ("SALIDA", _) => "Ya registraste tu SALIDA de la jornada. No se permiten más registros hoy.",
+            ("SALIDA_COMIDA", not "ENTRADA_COMIDA") => "Tienes una SALIDA A COMIDA activa. Debes registrar tu ENTRADA DE COMIDA.",
+            ("ENTRADA" or "RETARDO" or "ENTRADA_COMIDA", "ENTRADA" or "RETARDO") => "Ya cuentas con una entrada activa registrada el día de hoy.",
+            ("ENTRADA" or "RETARDO", "ENTRADA_COMIDA") => "No puedes registrar ENTRADA DE COMIDA sin una SALIDA A COMIDA previa.",
+            _ => $"No se permite registrar {nuevo.Replace("_", " ")} inmediatamente después de {actual.Replace("_", " ")}."
+        };
+
         public static double CalcularDistanciaMetros(double lat1, double lon1, double lat2, double lon2)
         {
             const double RadioTierraMetros = 6371000;
@@ -93,6 +113,24 @@ namespace BioChecadorAPI.Helpers
             if (valor == null || valor == DBNull.Value) return 0;
             int.TryParse(valor.ToString()?.Trim(), out int res);
             return res;
+        }
+
+        public static (bool EsValido, string Mensaje) ValidarTransicion(string? ultimoMovimiento, string? nuevoMovimiento)
+        {
+            string actual = ultimoMovimiento?.Trim().ToUpperInvariant() ?? string.Empty;
+            string nuevo = nuevoMovimiento?.Trim().ToUpperInvariant() ?? string.Empty;
+
+            if (!TransicionesValidas.TryGetValue(actual, out var permitidos))
+            {
+                return (false, "Estado de movimiento no reconocido.");
+            }
+
+            if (permitidos.Contains(nuevo))
+            {
+                return (true, string.Empty);
+            }
+
+            return (false, GenerarMensajeError(actual, nuevo));
         }
     }
 }
