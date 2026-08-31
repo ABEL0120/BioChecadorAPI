@@ -1,8 +1,11 @@
 ﻿using BioChecadorAPI.Data;
 using BioChecadorAPI.DTOs;
 using BioChecadorAPI.Helpers;
+using BioChecadorAPI.Models;
+using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.Data.SqlClient;
 using System.Data;
+using System.Globalization;
 using static BioChecadorAPI.Helpers.AuthHelper;
 using static BioChecadorAPI.Helpers.BDHelper;
 using static BioChecadorAPI.Helpers.ChecadorHelper;
@@ -13,10 +16,12 @@ namespace BioChecadorAPI.Repositories
     {
         Task<EstadoEmpleadoResponseDto?> ConsultarEstadoPorRfcAsync(string rfc, string dispositivoNombre);
         Task<bool> GuardarBiometriaAsync(string rfc, string credentialId, byte[] publicKey, string dispositivoNombre, string userAgent);
-        Task<bool> InsertarChecadaAsync(string rfc, int numeroCompania, decimal latitud, decimal longitud, string userAgent, string dispositivoNombre, string tipoMovimiento);
+        Task<bool> InsertarChecadaAsync(string rfc, int numeroCompania, decimal latitud, decimal longitud, string userAgent, string dispositivoNombre, string tipoMovimiento, int numeroEmpleado);
         Task<bool> ValidarCredencialBiometricaAsync(string rfc, string credentialId);
         Task<string> ObtenerUltimoMovimientoHoyAsync(string rfc);
         Task<HistoricoAMNResponse[]> ObtenerHistoricoAmnAsync(HistoricoAMNDto dto);
+        Task<string> EnviarSolicitudAsync(SolicitudCreacionDto dto);
+        Task<bool> ConsultarExistenciaSolicitud(SolicitudCreacionDto dto);
     }
 
     public class AmnRepository : IAmnRepository
@@ -32,7 +37,7 @@ namespace BioChecadorAPI.Repositories
         {
             using var conn = (SqlConnection)_connectionFactory.CreateConnection();
             const string query = @"SELECT ISNULL(a.M105, '') AS RFC, ISNULL(a.M104, '') AS Nombre, ISNULL(a.Compañia, 0) AS NumeroCompania, ISNULL(c.Razon_Social, '') AS RazonSocial, ISNULL(c.Adicional, '') AS Adicional, ISNULL(c.Latitud, 0) AS LatitudEmpresa, ISNULL(c.Longitud, 0) AS LongitudEmpresa, ISNULL(c.Radio_Tolerancia_Metros, 150) AS RadioToleranciaMetros, ISNULL(c.Inicio_Nomina, '') AS InicioNomina,
-            CASE WHEN EXISTS (SELECT 1 FROM AMN_Biometria b WHERE b.RFC = a.M105 AND b.Dispositivo_Nombre = @dispositivo AND b.Baja = '') THEN 1 ELSE 0 END AS TieneBiometria, ISNULL(a.Trabajo_Remoto, '') AS TrabajoRemoto,
+            CASE WHEN EXISTS (SELECT 1 FROM AMN_Biometria b WHERE b.RFC = a.M105 AND b.Dispositivo_Nombre = @dispositivo AND b.Baja = '') THEN 1 ELSE 0 END AS TieneBiometria, ISNULL(a.Trabajo_Remoto, '') AS TrabajoRemoto, ISNULL(a.M103, '') AS NumeroEmpleado,
             t.D147 AS TurnoDescripcion, t.T102 AS TurnoPatron, t.*
             FROM AMN a LEFT JOIN Compañias c ON a.Compañia = c.Numero_Compañia LEFT JOIN Turnos t ON a.Compañia = t.Compañia AND a.M147 = t.M147
             WHERE a.M105 = @rfc";
@@ -50,7 +55,8 @@ namespace BioChecadorAPI.Repositories
             int radioToleranciaMetros;
             string inicioNomina;
             bool tieneBiometria;
-            string TrabajoRemoto;
+            string trabajoRemoto;
+            int numeroEmpleado;
             TurnoDetalleDto? horario = null;
 
             using (var reader = await cmd.ExecuteReaderAsync())
@@ -70,9 +76,10 @@ namespace BioChecadorAPI.Repositories
                 radioToleranciaMetros = reader.GetInt32(7);
                 inicioNomina = reader.GetString(8).Trim();
                 tieneBiometria = reader.GetInt32(9) == 1;
-                TrabajoRemoto = reader.GetString(10).Trim();
+                trabajoRemoto = reader.GetString(10).Trim();
+                numeroEmpleado = ParsearEntero(reader[11]);
 
-                if (!reader.IsDBNull(11))
+                if (!reader.IsDBNull(12))
                 {
                     horario = MapearTurno(reader, inicioNomina);
                 }
@@ -91,11 +98,12 @@ namespace BioChecadorAPI.Repositories
                 Rfc = rfcEncontrado,
                 Nombre = nombre,
                 NumeroCompania = numeroCompania,
-                RazonSocial = $"{razonSocial} - {adicional}",
+                RazonSocial = string.IsNullOrWhiteSpace(adicional) ? razonSocial : $"{razonSocial} - {adicional}",
                 LatitudEmpresa = latitudEmpresa,
                 LongitudEmpresa = longitudEmpresa,
                 RadioToleranciaMetros = radioToleranciaMetros,
-                TrabajoRemoto = TrabajoRemoto,
+                TrabajoRemoto = trabajoRemoto,
+                NumeroEmpleado = numeroEmpleado,
                 Horario = horario
             };
         }
@@ -137,7 +145,7 @@ namespace BioChecadorAPI.Repositories
             return count > 0;
         }
 
-        public async Task<bool> InsertarChecadaAsync(string rfc, int numeroCompania, decimal latitud, decimal longitud, string userAgent, string dispositivoNombre, string tipoMovimiento)
+        public async Task<bool> InsertarChecadaAsync(string rfc, int numeroCompania, decimal latitud, decimal longitud, string userAgent, string dispositivoNombre, string tipoMovimiento, int numeroEmpleado)
         {
             using var conn = (SqlConnection)_connectionFactory.CreateConnection();
             await conn.OpenAsync();
@@ -157,7 +165,43 @@ namespace BioChecadorAPI.Repositories
             cmd.Parameters.Add("@dispositivoNombre", SqlDbType.VarChar, 150).Value = dispositivoNombre ?? string.Empty;
             cmd.Parameters.Add("@tipo", SqlDbType.VarChar, 20).Value = tipoMovimiento.ToUpperInvariant();
             var rows = await cmd.ExecuteNonQueryAsync();
+            if (rows > 0) await InsertarKardexAsync(tipoMovimiento, conn, numeroCompania, numeroEmpleado, "X");
             return rows > 0;
+        }
+
+        public async Task<string> EnviarSolicitudAsync(SolicitudCreacionDto dto)
+        {
+            using var conn = (SqlConnection)_connectionFactory.CreateConnection();
+            await conn.OpenAsync();
+            int ultimoId = await ObtenerIdMax(conn, "AMN_Solicitudes");
+            int nuevoNumero = ultimoId + 1;
+            string fechaActual = FormatearFecha(DateTime.Now);
+            string fechaExpiracion = FormatearFecha(DateTime.Now.AddDays(1));
+            const string query = @"INSERT INTO AMN_Solicitudes (Numero, RFC, Numero_Compañia, Motivo, Fecha_Solicitud, Fecha_Accion, Fecha_Expiracion, Estado_Solicitud) VALUES (@numero, @rfc, @compania, @motivo, @fechaSolicitud, @fechaAccion, @fechaExpiracion, @estado)";
+            using var cmd = new SqlCommand(query, conn);
+            cmd.Parameters.Add("@numero", SqlDbType.Int).Value = nuevoNumero;
+            cmd.Parameters.Add("@rfc", SqlDbType.VarChar, 13).Value = dto.Rfc.Trim().ToUpperInvariant();
+            cmd.Parameters.Add("@compania", SqlDbType.Int).Value = dto.NumeroCompania;
+            cmd.Parameters.Add("@motivo", SqlDbType.VarChar, 150).Value = dto.Motivo.Trim();
+            cmd.Parameters.Add("@fechaSolicitud", SqlDbType.VarChar, 30).Value = fechaActual;
+            cmd.Parameters.Add("@fechaAccion", SqlDbType.VarChar, 30).Value = string.Empty;
+            cmd.Parameters.Add("@fechaExpiracion", SqlDbType.VarChar, 30).Value = fechaExpiracion.Trim();
+            cmd.Parameters.Add("@estado", SqlDbType.VarChar, 1).Value = "P";
+            var rows = await cmd.ExecuteNonQueryAsync();
+            return rows > 0 ? fechaExpiracion : string.Empty;
+        }
+
+        public async Task<bool> ConsultarExistenciaSolicitud(SolicitudCreacionDto dto)
+        {
+            using var conn = (SqlConnection)_connectionFactory.CreateConnection();
+            const string query = @"SELECT COUNT(1) FROM AMN_Solicitudes WHERE RFC = @rfc AND Numero_Compañia = @compania AND Estado_Solicitud = 'P' AND Fecha_Expiracion >= @fechaActual";
+            using var cmd = new SqlCommand(query, conn);
+            cmd.Parameters.Add("@rfc", SqlDbType.VarChar, 13).Value = dto.Rfc.Trim().ToUpperInvariant();
+            cmd.Parameters.Add("@compania", SqlDbType.Int).Value = dto.NumeroCompania;
+            cmd.Parameters.Add("@fechaActual", SqlDbType.VarChar, 30).Value = FormatearFecha(DateTime.Now);
+            await conn.OpenAsync();
+            var count = (int?)await cmd.ExecuteScalarAsync() ?? 0;
+            return count > 0;
         }
 
         public async Task<string> ObtenerUltimoMovimientoHoyAsync(string rfc)
@@ -199,6 +243,6 @@ namespace BioChecadorAPI.Repositories
 
             return resultado.ToArray();
         }
-
+        
     }
 }

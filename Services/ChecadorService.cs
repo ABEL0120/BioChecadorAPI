@@ -13,6 +13,7 @@ namespace BioChecadorAPI.Services
         Task<ApiResponse<bool>> EnrolarBiometriaAsync(EnrolarBiometriaDto dto);
         Task<ApiResponse<RegistroChecadaResponseDto>> MarcarAsistenciaAsync(MarcarAsistenciaDto dto);
         Task<ApiResponse<HistoricoAMNResponse[]>> ConsultarHistoricoAMN(HistoricoAMNDto dto);
+        Task<ApiResponse<SolicitudResponseDto>> MandarSolicitudAMN(SolicitudCreacionDto dto);
     }
 
     public class ChecadorService : IChecadorService
@@ -119,6 +120,51 @@ namespace BioChecadorAPI.Services
             };
         }
 
+
+        public async Task<ApiResponse<SolicitudResponseDto>> MandarSolicitudAMN(SolicitudCreacionDto dto)
+        {
+            try
+            {
+                bool solicitudExistente = await _amnRepository.ConsultarExistenciaSolicitud(dto);
+                if (solicitudExistente)
+                {
+                    return new ApiResponse<SolicitudResponseDto>
+                    {
+                        Success = false,
+                        Message = "Ya cuentas con una solicitud pendiente en revisión. Por favor, espera la respuesta del administrador. Si transcurren 24 horas sin respuesta, podrás enviar una nueva solicitud."
+                    };
+                }
+                var fechaExpiracion = await _amnRepository.EnviarSolicitudAsync(dto);
+                if (string.IsNullOrEmpty(fechaExpiracion))
+                {
+                    return new ApiResponse<SolicitudResponseDto>
+                    {
+                        Success = false,
+                        Message = "Error al registrar la solicitud en la base de datos."
+                    };
+                }
+
+                return new ApiResponse<SolicitudResponseDto>
+                {
+                    Success = true,
+                    Message = $"Solicitud enviada correctamente. Su solicitud expira en 1 dia habil",
+                    Data = new SolicitudResponseDto
+                    {                       
+                        FechaExpiracion = fechaExpiracion
+                    }
+                };
+            }
+            catch (Exception ex)
+            {
+                return new ApiResponse<SolicitudResponseDto>
+                {
+                    Success = false,
+                    Message = $"Error al intentar enviar la solicitud.",
+                    Data = { }
+                };
+            }
+        }
+
         public async Task<ApiResponse<RegistroChecadaResponseDto>> MarcarAsistenciaAsync(MarcarAsistenciaDto dto)
         {
             var rfcLimpio = dto.Rfc.Trim().ToUpperInvariant();
@@ -171,7 +217,7 @@ namespace BioChecadorAPI.Services
             }
 
             var ultimoMovimientoHoy = await _amnRepository.ObtenerUltimoMovimientoHoyAsync(rfcLimpio);
-            if (dto.TipoMovimiento.ToUpperInvariant() == "ENTRADA")
+            if (dto.TipoMovimiento.ToUpperInvariant() == "ENTRADA" || dto.TipoMovimiento.ToUpperInvariant() == "RETARDO")
             {
                 if (ultimoMovimientoHoy == "ENTRADA")
                 {
@@ -210,7 +256,8 @@ namespace BioChecadorAPI.Services
                 dto.Longitud,
                 string.Empty,
                 dto.Dispositivo,
-                dto.TipoMovimiento
+                dto.TipoMovimiento,
+                empleado.NumeroEmpleado
             );
 
             if (!guardado)
@@ -265,7 +312,7 @@ namespace BioChecadorAPI.Services
                 return new ApiResponse<HistoricoAMNResponse[]>
                 {
                     Success = false,
-                    Message = $"Error al obtener el historial: {ex.Message}",
+                    Message = $"Error al obtener el historial.",
                     Data = Array.Empty<HistoricoAMNResponse>()
                 };
             }

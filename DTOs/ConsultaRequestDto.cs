@@ -108,6 +108,7 @@ namespace BioChecadorAPI.DTOs
         public decimal LongitudEmpresa { get; set; }
         public int RadioToleranciaMetros { get; set; } = 150;
         public string TrabajoRemoto { get; set; } = string.Empty;
+        public int NumeroEmpleado { get; set; }
         public TurnoDetalleDto? Horario { get; set; }
     }
 
@@ -131,5 +132,31 @@ namespace BioChecadorAPI.DTOs
         public decimal Longitud { get; set; }
         public string DispositivoNombre { get; set; } = string.Empty;
         public string TipoMovimiento { get; set; } = string.Empty;
+    }
+
+    public class SolicitudCreacionDto
+    {
+        [Required(ErrorMessage = "El RFC es obligatorio.")]
+        [StringLength(13, MinimumLength = 12, ErrorMessage = "El RFC debe tener 12 o 13 caracteres.")]
+        public string Rfc { get; set; } = string.Empty;
+
+        [Range(1, int.MaxValue, ErrorMessage = "La compañía es obligatoria.")]
+        public int NumeroCompania { get; set; }
+
+        [Required(ErrorMessage = "El motivo es obligatorio.")]
+        [StringLength(150, ErrorMessage = "El motivo no puede exceder 150 caracteres.")]
+        public string Motivo { get; set; } = string.Empty;
+    }
+
+    public class SolicitudResponseDto
+    {
+        public int Numero { get; set; }
+        public string Rfc { get; set; } = string.Empty;
+        public int NumeroCompania { get; set; }
+        public string Motivo { get; set; } = string.Empty;
+        public string FechaSolicitud { get; set; } = string.Empty;
+        public string FechaAccion { get; set; } = string.Empty;
+        public string EstadoSolicitud { get; set; } = string.Empty;
+        public string FechaExpiracion { get; set; } = string.Empty;
     }
 }
