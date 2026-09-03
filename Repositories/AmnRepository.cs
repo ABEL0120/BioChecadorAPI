@@ -40,7 +40,7 @@ namespace BioChecadorAPI.Repositories
             CASE WHEN EXISTS (SELECT 1 FROM AMN_Biometria b WHERE b.RFC = a.M105 AND b.Dispositivo_Nombre = @dispositivo AND b.Baja = '') THEN 1 ELSE 0 END AS TieneBiometria, ISNULL(a.Trabajo_Remoto, '') AS TrabajoRemoto, ISNULL(a.M103, '') AS NumeroEmpleado,
             t.D147 AS TurnoDescripcion, t.T102 AS TurnoPatron, t.*
             FROM AMN a LEFT JOIN Compañias c ON a.Compañia = c.Numero_Compañia LEFT JOIN Turnos t ON a.Compañia = t.Compañia AND a.M147 = t.M147
-            WHERE a.M105 = @rfc";
+            WHERE a.M105 = @rfc AND a.M130 = ''";
             using var cmd = new SqlCommand(query, conn);
             cmd.Parameters.Add("@rfc", SqlDbType.VarChar, 13).Value = rfc;
             cmd.Parameters.Add("@dispositivo", SqlDbType.VarChar, 150).Value = dispositivoNombre ?? string.Empty;
