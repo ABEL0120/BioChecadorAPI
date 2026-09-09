@@ -230,7 +230,9 @@ namespace BioChecadorAPI.Services
             );
 
             var fueraDeRango = distancia > empleado.RadioToleranciaMetros;
-            if (fueraDeRango && empleado.TrabajoRemoto == "N")
+            //var trabajoRemoto = empleado.TrabajoRemoto;
+            var trabajoRemoto = "S";
+            if (fueraDeRango && trabajoRemoto == "N")
             {
                 return new ApiResponse<RegistroChecadaResponseDto>
                 {
