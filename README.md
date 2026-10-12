@@ -103,12 +103,3 @@ dotnet build
 # Ejecutar API
 dotnet run
 ```
-
-Interfaz Swagger: `http://localhost:5000/swagger`
-
----
-
-## 🔒 Buenas Prácticas de Seguridad
-
-- Nunca subas `appsettings.json` al control de versiones (`.gitignore` activado).
-- En entornos de producción, suministra las credenciales mediante Variables de Entorno del sistema (ej. `ConnectionStrings__SqlServer`).
