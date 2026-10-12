@@ -362,9 +362,9 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 
-# Ignorar configuraciones con contraseñas
+# Ignorar appsettings reales con credenciales
 appsettings.json
 appsettings.*.json
 
-# Mantener visible solo la plantilla de ejemplo
-!appsettings.example.json
+# Permitir que el archivo de ejemplo sí se suba a GitHub
+!appsettings.example.jsons
