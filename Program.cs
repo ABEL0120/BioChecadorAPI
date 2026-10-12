@@ -14,6 +14,8 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddSingleton<IDbConnectionData, DbConnectionData>();
+builder.Services.AddSingleton<IEmailData, EmailData>();
+builder.Services.AddHttpClient("NominaDocApiClient");
 builder.Services.Scan(scan => scan
     .FromAssemblyOf<Program>()
     .AddClasses(classes => classes.Where(type =>

@@ -1,0 +1,87 @@
+﻿using System.Data;
+using BioChecadorAPI.Data;
+using Microsoft.Data.SqlClient;
+using static BioChecadorAPI.DTOs.NominaDto;
+
+namespace BioChecadorAPI.Repositories
+{
+    public interface INominaRepository
+    {
+        Task<List<CalendarioPeriodoDto>> ObtenerPeriodosTimbradosAsync(string? fechaInicial, string? fechaFinal);
+        Task<(string Nombre, string RFC)> ObtenerDatosEmpleadoAsync(int compania, int m103);
+    }
+
+    public class NominaRepository : INominaRepository
+    {
+        private readonly IDbConnectionData _connectionFactory;
+
+        public NominaRepository(IDbConnectionData connectionFactory)
+        {
+            _connectionFactory = connectionFactory;
+        }
+
+        public async Task<List<CalendarioPeriodoDto>> ObtenerPeriodosTimbradosAsync(string? fechaInicial, string? fechaFinal)
+        {
+            var lista = new List<CalendarioPeriodoDto>();
+            using var conn = (SqlConnection)_connectionFactory.CreateConnection();
+            await conn.OpenAsync();
+
+            string query = @"SELECT Año, Proceso, ISNULL(F_Inicio, ''), ISNULL(F_Termino, ''), ISNULL(F_Pago, '') 
+                             FROM Calendario 
+                             WHERE Timbrado = 'S'";
+
+            if (!string.IsNullOrWhiteSpace(fechaInicial) && !string.IsNullOrWhiteSpace(fechaFinal))
+            {
+                query += " AND F_Pago >= @fechaInicial AND F_Pago <= @fechaFinal";
+            }
+            else if (!string.IsNullOrWhiteSpace(fechaInicial))
+            {
+                query += " AND F_Pago >= @fechaInicial";
+            }
+            else if (!string.IsNullOrWhiteSpace(fechaFinal))
+            {
+                query += " AND F_Pago <= @fechaFinal";
+            }
+
+            query += " ORDER BY Año DESC, Proceso DESC, F_Pago DESC";
+
+            using var cmd = new SqlCommand(query, conn);
+            if (!string.IsNullOrWhiteSpace(fechaInicial)) cmd.Parameters.Add("@fechaInicial", SqlDbType.VarChar, 10).Value = fechaInicial;
+            if (!string.IsNullOrWhiteSpace(fechaFinal)) cmd.Parameters.Add("@fechaFinal", SqlDbType.VarChar, 10).Value = fechaFinal;
+
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                lista.Add(new CalendarioPeriodoDto
+                {
+                    Anio = reader.GetInt32(0),
+                    Proceso = reader.GetInt32(1),
+                    FechaInicio = reader.GetString(2).Trim(),
+                    FechaTermino = reader.GetString(3).Trim(),
+                    FechaPago = reader.GetString(4).Trim()
+                });
+            }
+
+            return lista;
+        }
+
+        public async Task<(string Nombre, string RFC)> ObtenerDatosEmpleadoAsync(int compania, int m103)
+        {
+            using var conn = (SqlConnection)_connectionFactory.CreateConnection();
+            await conn.OpenAsync();
+
+            const string query = "SELECT ISNULL(M104, ''), ISNULL(M105, '') FROM AMN WHERE Compañia = @compania AND M103 = @m103";
+            using var cmd = new SqlCommand(query, conn);
+            cmd.Parameters.Add("@compania", SqlDbType.Int).Value = compania;
+            cmd.Parameters.Add("@m103", SqlDbType.Int).Value = m103;
+
+            using var reader = await cmd.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
+            {
+                return (reader.GetString(0).Trim(), reader.GetString(1).Trim());
+            }
+
+            return (string.Empty, string.Empty);
+        }
+    }
+}

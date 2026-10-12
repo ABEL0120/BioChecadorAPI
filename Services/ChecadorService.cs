@@ -260,7 +260,8 @@ namespace BioChecadorAPI.Services
                 string.Empty,
                 dto.Dispositivo,
                 dto.TipoMovimiento,
-                empleado.NumeroEmpleado
+                empleado.NumeroEmpleado,
+                dto.FechaHora
             );
 
             if (!guardado)

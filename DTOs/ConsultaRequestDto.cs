@@ -81,6 +81,7 @@ namespace BioChecadorAPI.DTOs
         public string Dispositivo { get; set; } = string.Empty;
         public string TipoMovimiento { get; set; } = "ENTRADA";
         public string EsRemoto { get; set; } = string.Empty;
+        public DateTime FechaHora { get; set; }
     }
 
     public class RegistroChecadaResponseDto
@@ -109,6 +110,11 @@ namespace BioChecadorAPI.DTOs
         public int RadioToleranciaMetros { get; set; } = 150;
         public string TrabajoRemoto { get; set; } = string.Empty;
         public int NumeroEmpleado { get; set; }
+        public string CorreoEmpleado { get; set; } = string.Empty;
+        public int JefeInmediato { get; set; }
+        public int DiasMinimoVacaciones { get; set; }
+        public int MinimoVacaciones { get; set; }
+        public int MaximoVacaciones { get; set; }
         public TurnoDetalleDto? Horario { get; set; }
     }
 

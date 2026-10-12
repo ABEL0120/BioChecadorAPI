@@ -18,11 +18,23 @@ namespace BioChecadorAPI.Helpers
             return result != null && result != DBNull.Value ? Convert.ToInt32(result) : 0;
         }
 
+        public static async Task<int> ObtenerIdMaxFiltro(SqlConnection conn, string tabla, string filtro, string columna = "Numero")
+        {
+            if (string.IsNullOrWhiteSpace(tabla) || string.IsNullOrWhiteSpace(filtro))
+            {
+                return 0;
+            }
+            string query = $"SELECT ISNULL(MAX({columna}), 0) FROM {tabla} WHERE {filtro}";
+            using var cmd = new SqlCommand(query, conn);
+            var result = await cmd.ExecuteScalarAsync();
+            return result != null && result != DBNull.Value ? Convert.ToInt32(result) : 0;
+        }
+
         public static async Task<int> InsertarKardexAsync(string tipoMovimiento, SqlConnection conn, int numeroCompania, int numeroEmpleado, string asistio)
         {
             string tipo = tipoMovimiento?.Trim().ToUpperInvariant() ?? string.Empty;
-            if (tipo != "ENTRADA" && tipo != "RETARDO") return 0;            
-            if (numeroEmpleado <= 0)    return 0;            
+            if (tipo != "ENTRADA" && tipo != "RETARDO") return 0;
+            if (numeroEmpleado <= 0) return 0;
             var ahora = DateTime.Now;
             int anio = ahora.Year;
             int mes = ahora.Month;
@@ -39,10 +51,14 @@ namespace BioChecadorAPI.Helpers
             return await cmd.ExecuteNonQueryAsync();
         }
 
-        public static string FormatearFecha(DateTime fecha)
+        public static string FormatearFechaHora(DateTime fecha)
         {
             return fecha.ToString("yyyy/MM/dd HH:mm:ss", CultureInfo.InvariantCulture);
         }
 
+        public static string FormatearFecha(DateTime fecha)
+        {
+            return fecha.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture);
+        }
     }
 }
