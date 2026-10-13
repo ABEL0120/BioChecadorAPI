@@ -10,7 +10,7 @@ namespace BioChecadorAPI.Repositories
     public interface INominaRepository
     {
         Task<List<CalendarioPeriodoDto>> ObtenerPeriodosTimbradosAsync(string? fechaInicial, string? fechaFinal);
-        Task<(string Nombre, string RFC)> ObtenerDatosEmpleadoAsync(int compania, int m103);
+        Task<(string apellidosNombre, string RFC, string nombreApellidos)> ObtenerDatosEmpleadoAsync(int compania, int m103);
         Task<string> ObtenerRfcCompaniaAsync(int compania);
     }
 
@@ -65,12 +65,12 @@ namespace BioChecadorAPI.Repositories
             return lista;
         }
 
-        public async Task<(string Nombre, string RFC)> ObtenerDatosEmpleadoAsync(int compania, int m103)
+        public async Task<(string apellidosNombre, string RFC, string nombreApellidos)> ObtenerDatosEmpleadoAsync(int compania, int m103)
         {
             using var conn = (SqlConnection)_connectionFactory.CreateConnection();
             await conn.OpenAsync();
 
-            const string query = "SELECT ISNULL(M104, ''), ISNULL(M105, '') FROM AMN WHERE Compañia = @compania AND M103 = @m103";
+            const string query = "SELECT ISNULL(M104, '') AS Apellidos_Nombre, ISNULL(M105, ''), CONCAT(M146, ' ', M144, ' ', M145) AS Nombre_Apellidos FROM AMN WHERE Compañia = @compania AND M103 = @m103";
             using var cmd = new SqlCommand(query, conn);
             cmd.Parameters.Add("@compania", SqlDbType.Int).Value = compania;
             cmd.Parameters.Add("@m103", SqlDbType.Int).Value = m103;
@@ -78,10 +78,10 @@ namespace BioChecadorAPI.Repositories
             using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
             {
-                return (reader.GetString(0).Trim(), reader.GetString(1).Trim());
+                return (reader.GetString(0).Trim(), reader.GetString(1).Trim(), reader.GetString(2).Trim());
             }
 
-            return (string.Empty, string.Empty);
+            return (string.Empty, string.Empty, string.Empty);
         }
 
         public async Task<string> ObtenerRfcCompaniaAsync(int compania)

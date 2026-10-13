@@ -26,8 +26,10 @@ namespace BioChecadorAPI.Services
 
         public async Task<ApiResponse<List<ReciboNominaDto>>> ConsultarRecibosEmpleadoAsync(int compania, int m103, string? fechaInicial, string? fechaFinal, string? rfcCompania = null)
         {
-                var (nombre, _) = await _nominaRepo.ObtenerDatosEmpleadoAsync(compania, m103);
-                if (string.IsNullOrWhiteSpace(nombre))
+            try
+            {
+                var (apellidoNombre, _, nombreApellido) = await _nominaRepo.ObtenerDatosEmpleadoAsync(compania, m103);
+                if (string.IsNullOrWhiteSpace(apellidoNombre))
                 {
                     return new ApiResponse<List<ReciboNominaDto>>
                     {
@@ -56,7 +58,8 @@ namespace BioChecadorAPI.Services
                 var requestMicroservicio = new
                 {
                     NumeroEmpleado = m103,
-                    NombreEmpleado = nombre,
+                    ApellidoNombre = apellidoNombre,
+                    NombreApellido = nombreApellido,
                     RfcCompañia = rfcCompania?.Trim() ?? string.Empty,
                     Periodos = periodos
                 };
@@ -74,7 +77,17 @@ namespace BioChecadorAPI.Services
                 }
 
                 var apiRes = await response.Content.ReadFromJsonAsync<ApiResponse<List<ReciboNominaDto>>>();
-                return apiRes ?? new ApiResponse<List<ReciboNominaDto>> { Success = false, Message = "Respuesta vacía" };            
+                return apiRes ?? new ApiResponse<List<ReciboNominaDto>> { Success = false, Message = "Respuesta vacía" };
+            }
+            catch (Exception)
+            {
+                return new ApiResponse<List<ReciboNominaDto>>
+                {
+                    Success = false,
+                    Message = "Error al conectar con el servidor de archivos de nómina.",
+                    Data = new List<ReciboNominaDto>()
+                };
+            }
         }
 
         public async Task<(byte[]? ArchivoBytes, string ContentType, string NombreDescarga)> DescargarArchivoAsync(int anio, int proceso, string tipo, string archivo, string? rfcCompania = null)
