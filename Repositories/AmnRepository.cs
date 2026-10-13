@@ -37,7 +37,7 @@ namespace BioChecadorAPI.Repositories
         {
             using var conn = (SqlConnection)_connectionFactory.CreateConnection();
             const string query = @"SELECT ISNULL(a.M105, '') AS RFC, ISNULL(a.M104, '') AS Nombre, ISNULL(a.Compañia, 0) AS NumeroCompania, ISNULL(c.Razon_Social, '') AS RazonSocial, ISNULL(c.Adicional, '') AS Adicional, ISNULL(c.Latitud, 0) AS LatitudEmpresa, ISNULL(c.Longitud, 0) AS LongitudEmpresa, ISNULL(c.Radio_Tolerancia_Metros, 150) AS RadioToleranciaMetros, ISNULL(c.Inicio_Nomina, '') AS InicioNomina,
-            CASE WHEN EXISTS (SELECT 1 FROM AMN_Biometria b WHERE b.RFC = a.M105 AND b.Dispositivo_Nombre = @dispositivo AND b.Baja = '') THEN 1 ELSE 0 END AS TieneBiometria, ISNULL(a.Trabajo_Remoto, '') AS TrabajoRemoto, ISNULL(a.M103, '') AS NumeroEmpleado, ISNULL(a.Correo, '') AS Correo, ISNULL(a.Jefe_Inmediato, '') AS Jefe_Inmediato, ISNULL(c.Dias_Minimo_Vacaciones,'') AS Dias_Minimo_Vacaciones, ISNULL(c.Minimo_Vacaciones,'') AS Minimo_Vacaciones, ISNULL(c.Maximo_Vacaciones,'') AS Maximo_Vacaciones,
+            CASE WHEN EXISTS (SELECT 1 FROM AMN_Biometria b WHERE b.RFC = a.M105 AND b.Dispositivo_Nombre = @dispositivo AND b.Baja = '') THEN 1 ELSE 0 END AS TieneBiometria, ISNULL(a.Trabajo_Remoto, '') AS TrabajoRemoto, ISNULL(a.M103, '') AS NumeroEmpleado, ISNULL(a.Correo, '') AS Correo, ISNULL(a.Jefe_Inmediato, '') AS Jefe_Inmediato, ISNULL(c.Dias_Minimo_Vacaciones,'') AS Dias_Minimo_Vacaciones, ISNULL(c.Minimo_Vacaciones,'') AS Minimo_Vacaciones, ISNULL(c.Maximo_Vacaciones,'') AS Maximo_Vacaciones, ISNULL(c.RFC, '') AS RFC_Compania,
             t.D147 AS TurnoDescripcion, t.T102 AS TurnoPatron, t.*
             FROM AMN a LEFT JOIN Compañias c ON a.Compañia = c.Numero_Compañia LEFT JOIN Turnos t ON a.Compañia = t.Compañia AND a.M147 = t.M147
             WHERE a.M105 = @rfc AND a.M130 = ''";
@@ -62,6 +62,7 @@ namespace BioChecadorAPI.Repositories
             int Dias_Minimo_Vacaciones;
             int Minimo_Vacaciones;
             int Maximo_Vacaciones;
+            string RfcCompañia;
             TurnoDetalleDto? horario = null;
 
             using (var reader = await cmd.ExecuteReaderAsync())
@@ -88,8 +89,9 @@ namespace BioChecadorAPI.Repositories
                 Dias_Minimo_Vacaciones = ParsearEntero(reader[14]);
                 Minimo_Vacaciones = ParsearEntero(reader[15]);
                 Maximo_Vacaciones = ParsearEntero(reader[16]);
+                RfcCompañia = DesEncripta(reader.GetString(17));
 
-                if (!reader.IsDBNull(17))
+                if (!reader.IsDBNull(18))
                 {
                     horario = MapearTurno(reader, inicioNomina);
                 }
@@ -119,6 +121,7 @@ namespace BioChecadorAPI.Repositories
                 DiasMinimoVacaciones = Dias_Minimo_Vacaciones,
                 MinimoVacaciones = Minimo_Vacaciones,
                 MaximoVacaciones = Maximo_Vacaciones,
+                RfcCompañia = RfcCompañia,
                 Horario = horario
             };
         }

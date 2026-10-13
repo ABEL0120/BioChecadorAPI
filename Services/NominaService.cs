@@ -7,8 +7,8 @@ namespace BioChecadorAPI.Services
 {
     public interface INominaService
     {
-        Task<ApiResponse<List<ReciboNominaDto>>> ConsultarRecibosEmpleadoAsync(int compania, int m103, string? fechaInicial, string? fechaFinal);
-        Task<(byte[]? ArchivoBytes, string ContentType, string NombreDescarga)> DescargarArchivoAsync(int anio, int proceso, string tipo, string archivo);
+        Task<ApiResponse<List<ReciboNominaDto>>> ConsultarRecibosEmpleadoAsync(int compania, int m103, string? fechaInicial, string? fechaFinal, string? rfcCompania = null);
+        Task<(byte[]? ArchivoBytes, string ContentType, string NombreDescarga)> DescargarArchivoAsync(int anio, int proceso, string tipo, string archivo, string? rfcCompania = null);
     }
 
     public class NominaService : INominaService
@@ -24,56 +24,68 @@ namespace BioChecadorAPI.Services
             _microservicioUrl = configuration["Microservicios:NominaDocApiUrl"] ?? "http://localhost:5000";
         }
 
-        public async Task<ApiResponse<List<ReciboNominaDto>>> ConsultarRecibosEmpleadoAsync(int compania, int m103, string? fechaInicial, string? fechaFinal)
+        public async Task<ApiResponse<List<ReciboNominaDto>>> ConsultarRecibosEmpleadoAsync(int compania, int m103, string? fechaInicial, string? fechaFinal, string? rfcCompania = null)
         {
-            var (nombre, _) = await _nominaRepo.ObtenerDatosEmpleadoAsync(compania, m103);
-            if (string.IsNullOrWhiteSpace(nombre))
-            {
-                return new ApiResponse<List<ReciboNominaDto>>
+                var (nombre, _) = await _nominaRepo.ObtenerDatosEmpleadoAsync(compania, m103);
+                if (string.IsNullOrWhiteSpace(nombre))
                 {
-                    Success = false,
-                    Message = "Empleado no encontrado.",
-                    Data = new List<ReciboNominaDto>()
-                };
-            }
+                    return new ApiResponse<List<ReciboNominaDto>>
+                    {
+                        Success = false,
+                        Message = "Empleado no encontrado.",
+                        Data = new List<ReciboNominaDto>()
+                    };
+                }
 
-            var periodos = await _nominaRepo.ObtenerPeriodosTimbradosAsync(fechaInicial, fechaFinal);
-            if (!periodos.Any())
-            {
-                return new ApiResponse<List<ReciboNominaDto>>
+                if (string.IsNullOrWhiteSpace(rfcCompania))
                 {
-                    Success = true,
-                    Message = "No hay periodos timbrados en las fechas seleccionadas.",
-                    Data = new List<ReciboNominaDto>()
-                };
-            }
+                    rfcCompania = await _nominaRepo.ObtenerRfcCompaniaAsync(compania);
+                }
 
-            var requestMicroservicio = new
-            {
-                NumeroEmpleado = m103,
-                NombreEmpleado = nombre,
-                Periodos = periodos
-            };
-
-            var response = await _httpClient.PostAsJsonAsync($"{_microservicioUrl}/api/archivos/verificar-recibos", requestMicroservicio);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                return new ApiResponse<List<ReciboNominaDto>>
+                var periodos = await _nominaRepo.ObtenerPeriodosTimbradosAsync(fechaInicial, fechaFinal);
+                if (!periodos.Any())
                 {
-                    Success = false,
-                    Message = "Error al conectar con el servidor de archivos de nómina.",
-                    Data = new List<ReciboNominaDto>()
-                };
-            }
+                    return new ApiResponse<List<ReciboNominaDto>>
+                    {
+                        Success = true,
+                        Message = "No hay periodos timbrados en las fechas seleccionadas.",
+                        Data = new List<ReciboNominaDto>()
+                    };
+                }
 
-            var apiRes = await response.Content.ReadFromJsonAsync<ApiResponse<List<ReciboNominaDto>>>();
-            return apiRes ?? new ApiResponse<List<ReciboNominaDto>> { Success = false, Message = "Respuesta vacía" };
+                var requestMicroservicio = new
+                {
+                    NumeroEmpleado = m103,
+                    NombreEmpleado = nombre,
+                    RfcCompañia = rfcCompania?.Trim() ?? string.Empty,
+                    Periodos = periodos
+                };
+
+                var response = await _httpClient.PostAsJsonAsync($"{_microservicioUrl}/api/archivos/verificar-recibos", requestMicroservicio);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    return new ApiResponse<List<ReciboNominaDto>>
+                    {
+                        Success = false,
+                        Message = "Error al conectar con el servidor de archivos de nómina.",
+                        Data = new List<ReciboNominaDto>()
+                    };
+                }
+
+                var apiRes = await response.Content.ReadFromJsonAsync<ApiResponse<List<ReciboNominaDto>>>();
+                return apiRes ?? new ApiResponse<List<ReciboNominaDto>> { Success = false, Message = "Respuesta vacía" };            
         }
 
-        public async Task<(byte[]? ArchivoBytes, string ContentType, string NombreDescarga)> DescargarArchivoAsync(int anio, int proceso, string tipo, string archivo)
+        public async Task<(byte[]? ArchivoBytes, string ContentType, string NombreDescarga)> DescargarArchivoAsync(int anio, int proceso, string tipo, string archivo, string? rfcCompania = null)
         {
-            var response = await _httpClient.GetAsync($"{_microservicioUrl}/api/archivos/descargar/{anio}/{proceso}/{tipo}/{archivo}");
+            string url = $"{_microservicioUrl}/api/archivos/descargar/{anio}/{proceso}/{tipo}/{archivo}";
+            if (!string.IsNullOrWhiteSpace(rfcCompania))
+            {
+                url += $"?rfcCompania={Uri.EscapeDataString(rfcCompania.Trim())}";
+            }
+
+            var response = await _httpClient.GetAsync(url);
 
             if (!response.IsSuccessStatusCode)
             {

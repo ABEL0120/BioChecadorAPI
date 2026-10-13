@@ -115,6 +115,7 @@ namespace BioChecadorAPI.DTOs
         public int DiasMinimoVacaciones { get; set; }
         public int MinimoVacaciones { get; set; }
         public int MaximoVacaciones { get; set; }
+        public string RfcCompañia { get; set; } = string.Empty;
         public TurnoDetalleDto? Horario { get; set; }
     }
 

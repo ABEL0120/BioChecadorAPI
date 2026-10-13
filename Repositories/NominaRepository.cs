@@ -1,7 +1,9 @@
 ﻿using System.Data;
 using BioChecadorAPI.Data;
+using BioChecadorAPI.Helpers;
 using Microsoft.Data.SqlClient;
 using static BioChecadorAPI.DTOs.NominaDto;
+using static BioChecadorAPI.Helpers.AuthHelper;
 
 namespace BioChecadorAPI.Repositories
 {
@@ -9,6 +11,7 @@ namespace BioChecadorAPI.Repositories
     {
         Task<List<CalendarioPeriodoDto>> ObtenerPeriodosTimbradosAsync(string? fechaInicial, string? fechaFinal);
         Task<(string Nombre, string RFC)> ObtenerDatosEmpleadoAsync(int compania, int m103);
+        Task<string> ObtenerRfcCompaniaAsync(int compania);
     }
 
     public class NominaRepository : INominaRepository
@@ -82,6 +85,25 @@ namespace BioChecadorAPI.Repositories
             }
 
             return (string.Empty, string.Empty);
+        }
+
+        public async Task<string> ObtenerRfcCompaniaAsync(int compania)
+        {
+            using var conn = (SqlConnection)_connectionFactory.CreateConnection();
+            await conn.OpenAsync();
+
+            const string query = "SELECT TOP 1 ISNULL(RFC, '') FROM Compañias WHERE Numero_Compañia = @compania";
+            using var cmd = new SqlCommand(query, conn);
+            cmd.Parameters.Add("@compania", SqlDbType.Int).Value = compania;
+
+            var result = await cmd.ExecuteScalarAsync();
+            if (result != null && result != DBNull.Value)
+            {
+                string rfcEncriptado = result.ToString()!.Trim();
+                return DesEncripta(rfcEncriptado);
+            }
+
+            return string.Empty;
         }
     }
 }
