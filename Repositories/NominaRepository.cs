@@ -28,10 +28,7 @@ namespace BioChecadorAPI.Repositories
             var lista = new List<CalendarioPeriodoDto>();
             using var conn = (SqlConnection)_connectionFactory.CreateConnection();
             await conn.OpenAsync();
-
-            string query = @"SELECT Año, Proceso, ISNULL(F_Inicio, ''), ISNULL(F_Termino, ''), ISNULL(F_Pago, '') 
-                             FROM Calendario 
-                             WHERE Timbrado = 'S'";
+            string query = @"SELECT Año, Proceso, ISNULL(F_Inicio, ''), ISNULL(F_Termino, ''), ISNULL(F_Pago, '') FROM Calendario WHERE (Timbrado = 'S' OR Acumulado = 'A') ";
 
             if (!string.IsNullOrWhiteSpace(fechaInicial) && !string.IsNullOrWhiteSpace(fechaFinal))
             {
