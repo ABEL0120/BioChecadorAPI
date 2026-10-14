@@ -22,6 +22,8 @@ namespace BioChecadorAPI.Repositories
         Task<HistoricoAMNResponse[]> ObtenerHistoricoAmnAsync(HistoricoAMNDto dto);
         Task<string> EnviarSolicitudAsync(SolicitudCreacionDto dto);
         Task<bool> ConsultarExistenciaSolicitud(SolicitudCreacionDto dto);
+        Task<bool> GuardarSuscripcionPushAsync(string rfc, string dispositivoNombre, string subscriptionJson);
+        Task<bool> EliminarSuscripcionPushAsync(string rfc, string dispositivoNombre);
     }
 
     public class AmnRepository : IAmnRepository
@@ -263,6 +265,32 @@ namespace BioChecadorAPI.Repositories
 
             return resultado.ToArray();
         }
-        
+
+        public async Task<bool> GuardarSuscripcionPushAsync(string rfc, string dispositivoNombre, string subscriptionJson)
+        {
+            using var conn = (SqlConnection)_connectionFactory.CreateConnection();
+            const string query = @"UPDATE AMN_Biometria SET Push_Subscription = @subscription WHERE RFC = @rfc AND Dispositivo_Nombre = @dispositivo AND Baja = ''";
+            using var cmd = new SqlCommand(query, conn);
+            cmd.Parameters.Add("@rfc", SqlDbType.VarChar, 13).Value = rfc.Trim().ToUpperInvariant();
+            cmd.Parameters.Add("@dispositivo", SqlDbType.VarChar, 150).Value = dispositivoNombre ?? string.Empty;
+            cmd.Parameters.Add("@subscription", SqlDbType.NVarChar, -1).Value = subscriptionJson ?? string.Empty;
+            await conn.OpenAsync();
+            var rows = await cmd.ExecuteNonQueryAsync();
+            return rows > 0;
+        }
+
+        public async Task<bool> EliminarSuscripcionPushAsync(string rfc, string dispositivoNombre)
+        {
+            using var conn = (SqlConnection)_connectionFactory.CreateConnection();
+            const string query = @"UPDATE AMN_Biometria SET Push_Subscription = '' WHERE RFC = @rfc AND Dispositivo_Nombre = @dispositivo AND Baja = ''";
+            using var cmd = new SqlCommand(query, conn);
+            cmd.Parameters.Add("@rfc", SqlDbType.VarChar, 13).Value = rfc.Trim().ToUpperInvariant();
+            cmd.Parameters.Add("@dispositivo", SqlDbType.VarChar, 150).Value = dispositivoNombre ?? string.Empty;
+            await conn.OpenAsync();
+            var rows = await cmd.ExecuteNonQueryAsync();
+            return rows > 0;
+        }
+
+
     }
 }

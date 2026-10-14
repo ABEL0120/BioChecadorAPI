@@ -1,9 +1,9 @@
 ﻿using BioChecadorAPI.DTOs;
 using BioChecadorAPI.Repositories;
-using BioChecadorAPI.Repository;
 using System.Text;
 using static BioChecadorAPI.Helpers.ChecadorHelper;
 using static BioChecadorAPI.Helpers.ResponseHelper;
+using System.Text.Json;
 
 namespace BioChecadorAPI.Services
 {
@@ -20,10 +20,11 @@ namespace BioChecadorAPI.Services
     public class ChecadorService : IChecadorService
     {
         private readonly IAmnRepository _amnRepository;
-
-        public ChecadorService(IAmnRepository amnRepository)
+        private readonly IPushSubscriptionStore _subStore;
+        public ChecadorService(IAmnRepository amnRepository, IPushSubscriptionStore subStore)
         {
             _amnRepository = amnRepository;
+            _subStore = subStore;
         }
 
         public async Task<ApiResponse<EstadoEmpleadoResponseDto>> VerificarRfcAsync(VerificarRfcRequestDto request)
@@ -272,6 +273,8 @@ namespace BioChecadorAPI.Services
                     Message = "Error al registrar la checada en la base de datos."
                 };
             }
+
+            _subStore.RegistrarMovimiento(rfcLimpio, dto.TipoMovimiento);
 
             return new ApiResponse<RegistroChecadaResponseDto>
             {

@@ -1,4 +1,6 @@
+using BioChecadorAPI.BackgroundTasks;
 using BioChecadorAPI.Data;
+using BioChecadorAPI.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddCors(options =>
@@ -16,6 +18,9 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddSingleton<IDbConnectionData, DbConnectionData>();
 builder.Services.AddSingleton<IEmailData, EmailData>();
 builder.Services.AddHttpClient("NominaDocApiClient");
+builder.Services.AddSingleton<IPushSubscriptionStore, PushSubscriptionStore>();
+builder.Services.AddSingleton<IPushNotificationService, PushNotificationService>();
+builder.Services.AddHostedService<RecordatoriosTurnoWorker>();
 builder.Services.Scan(scan => scan
     .FromAssemblyOf<Program>()
     .AddClasses(classes => classes.Where(type =>
