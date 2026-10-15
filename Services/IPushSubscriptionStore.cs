@@ -1,5 +1,6 @@
 ﻿using System.Text.Json;
 using BioChecadorAPI.DTOs;
+using BioChecadorAPI.Repositories;
 
 namespace BioChecadorAPI.Services
 {
@@ -10,6 +11,7 @@ namespace BioChecadorAPI.Services
         Task EliminarDispositivoAsync(string rfc, string dispositivo);
         void RegistrarMovimiento(string rfc, string tipoMovimiento);
         Task RegistrarMovimientoAsync(string rfc, string tipoMovimiento);
+        Task SincronizarDesdeBDAsync(IAmnRepository amnRepo, IChecadorService checadorService);
     }
 
     public class PushSubscriptionStore : IPushSubscriptionStore
@@ -219,6 +221,91 @@ namespace BioChecadorAPI.Services
                 _lock.Release();
             }
         }
-    }
 
+        public async Task SincronizarDesdeBDAsync(IAmnRepository amnRepo, IChecadorService checadorService)
+        {
+            await _lock.WaitAsync();
+            try
+            {
+                var activasEnBD = await amnRepo.ObtenerSuscripcionesPushActivasAsync();
+                if (activasEnBD.Count == 0) return;
+
+                bool huboCambios = false;
+                foreach (var (rfc, disp, sub) in activasEnBD)
+                {
+                    var rfcNorm = (rfc ?? string.Empty).Trim().ToUpperInvariant();
+                    var dispNorm = (disp ?? string.Empty).Trim();
+                    if (string.IsNullOrWhiteSpace(rfcNorm) || string.IsNullOrWhiteSpace(sub)) continue;
+
+                    var emp = _cache.FirstOrDefault(e => e.Rfc.Trim().ToUpperInvariant() == rfcNorm);
+                    if (emp == null)
+                    {
+                        var estadoEmpleado = await checadorService.VerificarRfcAsync(new VerificarRfcRequestDto
+                        {
+                            Rfc = rfcNorm,
+                            DispositivoNombre = dispNorm
+                        });
+                        var dias = estadoEmpleado?.Data?.Horario?.Dias ?? new List<HorarioDiaDto>();
+                        var ultimoMov = await amnRepo.ObtenerUltimoMovimientoHoyAsync(rfcNorm);
+
+                        emp = new EmpleadoSuscripcionPersistenteDto
+                        {
+                            Rfc = rfcNorm,
+                            MinutosAnticipacion = 15,
+                            Dias = dias,
+                            Dispositivos = new List<DispositivoPushDto>
+                            {
+                                new DispositivoPushDto { Dispositivo = dispNorm, PushSubscription = sub }
+                            },
+                            UltimoMovimiento = !string.IsNullOrWhiteSpace(ultimoMov) ? ultimoMov.Trim().ToUpperInvariant() : null,
+                            FechaUltimoMovimiento = !string.IsNullOrWhiteSpace(ultimoMov) ? DateTime.Today.ToString("yyyy-MM-dd") : null
+                        };
+                        _cache.Add(emp);
+                        huboCambios = true;
+                    }
+                    else
+                    {
+                        var dispExistente = emp.Dispositivos.FirstOrDefault(d => string.Equals(d.Dispositivo.Trim(), dispNorm, StringComparison.OrdinalIgnoreCase));
+                        if (dispExistente == null)
+                        {
+                            emp.Dispositivos.Add(new DispositivoPushDto
+                            {
+                                Dispositivo = dispNorm,
+                                PushSubscription = sub
+                            });
+                            huboCambios = true;
+                        }
+                        else if (dispExistente.PushSubscription != sub)
+                        {
+                            dispExistente.PushSubscription = sub;
+                            huboCambios = true;
+                        }
+
+                        if (emp.Dias == null || emp.Dias.Count == 0)
+                        {
+                            var estadoEmpleado = await checadorService.VerificarRfcAsync(new VerificarRfcRequestDto
+                            {
+                                Rfc = rfcNorm,
+                                DispositivoNombre = dispNorm
+                            });
+                            emp.Dias = estadoEmpleado?.Data?.Horario?.Dias ?? new List<HorarioDiaDto>();
+                            huboCambios = true;
+                        }
+                    }
+                }
+
+                if (huboCambios)
+                {
+                    GuardarArchivo();
+                }
+            }
+            catch
+            {
+            }
+            finally
+            {
+                _lock.Release();
+            }
+        }
+    }
 }

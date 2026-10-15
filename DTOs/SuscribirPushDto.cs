@@ -1,16 +1,31 @@
 ﻿namespace BioChecadorAPI.DTOs
 {
+    public enum PushEnvioResultado
+    {
+        Exitoso,
+        SuscripcionExpirada, // 404 / 410 Gone -> requiere eliminación
+        ErrorTemporal       // timeout, 5xx, socket -> NO eliminar
+    }
+
     public class SuscribirPushDto
     {
         public string Rfc { get; set; } = string.Empty;
         public string Dispositivo { get; set; } = string.Empty;
         public string SubscriptionJson { get; set; } = string.Empty;
     }
+
     public class DesuscribirPushDto
     {
         public string Rfc { get; set; } = string.Empty;
         public string Dispositivo { get; set; } = string.Empty;
         public string? Endpoint { get; set; }
+    }
+
+    public class ProbarPushDto
+    {
+        public string Rfc { get; set; } = string.Empty;
+        public string? Dispositivo { get; set; }
+        public string? SubscriptionJson { get; set; }
     }
 
     public class PushSubscriptionPayload
@@ -31,6 +46,10 @@
         public string Body { get; set; } = string.Empty;
         public string Icon { get; set; } = "/pwa-192x192-v2.png";
         public string Badge { get; set; } = "/pwa-192x192-v2.png";
+        public string Tag { get; set; } = string.Empty;
+        public bool Renotify { get; set; } = true;
+        public bool RequireInteraction { get; set; } = false;
+        public int[] Vibrate { get; set; } = new[] { 250, 100, 250 };
         public object? Data { get; set; }
     }
 

@@ -24,6 +24,7 @@ namespace BioChecadorAPI.Repositories
         Task<bool> ConsultarExistenciaSolicitud(SolicitudCreacionDto dto);
         Task<bool> GuardarSuscripcionPushAsync(string rfc, string dispositivoNombre, string subscriptionJson);
         Task<bool> EliminarSuscripcionPushAsync(string rfc, string dispositivoNombre);
+        Task<List<(string Rfc, string Dispositivo, string SubscriptionJson)>> ObtenerSuscripcionesPushActivasAsync();
     }
 
     public class AmnRepository : IAmnRepository
@@ -292,5 +293,34 @@ namespace BioChecadorAPI.Repositories
         }
 
 
+
+        public async Task<List<(string Rfc, string Dispositivo, string SubscriptionJson)>> ObtenerSuscripcionesPushActivasAsync()
+        {
+            var list = new List<(string Rfc, string Dispositivo, string SubscriptionJson)>();
+            try
+            {
+                using var conn = (SqlConnection)_connectionFactory.CreateConnection();
+                const string query = @"SELECT RFC, Dispositivo_Nombre, Push_Subscription 
+                                       FROM AMN_Biometria 
+                                       WHERE ISNULL(Push_Subscription, '') != '' AND Baja = ''";
+                using var cmd = new SqlCommand(query, conn);
+                await conn.OpenAsync();
+                using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    var rfc = reader.IsDBNull(0) ? "" : reader.GetString(0);
+                    var disp = reader.IsDBNull(1) ? "" : reader.GetString(1);
+                    var sub = reader.IsDBNull(2) ? "" : reader.GetString(2);
+                    if (!string.IsNullOrWhiteSpace(rfc) && !string.IsNullOrWhiteSpace(sub))
+                    {
+                        list.Add((rfc, disp, sub));
+                    }
+                }
+            }
+            catch
+            {
+            }
+            return list;
+        }
     }
 }

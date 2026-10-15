@@ -242,16 +242,16 @@ namespace BioChecadorAPI.Services
                 };
             }
 
-            var ultimoMovimientoHoy = await _amnRepository.ObtenerUltimoMovimientoHoyAsync(rfcLimpio);
-            var (esValido, mensajeError) = ValidarTransicion(ultimoMovimientoHoy, dto.TipoMovimiento);
-            if (!esValido)
-            {
-                return new ApiResponse<RegistroChecadaResponseDto>
-                {
-                    Success = false,
-                    Message = mensajeError
-                };
-            }
+            //var ultimoMovimientoHoy = await _amnRepository.ObtenerUltimoMovimientoHoyAsync(rfcLimpio);
+            //var (esValido, mensajeError) = ValidarTransicion(ultimoMovimientoHoy, dto.TipoMovimiento);
+            //if (!esValido)
+            //{
+            //    return new ApiResponse<RegistroChecadaResponseDto>
+            //    {
+            //        Success = false,
+            //        Message = mensajeError
+            //    };
+            //}
 
             var guardado = await _amnRepository.InsertarChecadaAsync(
                 rfcLimpio,

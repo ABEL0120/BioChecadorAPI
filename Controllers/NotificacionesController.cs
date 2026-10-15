@@ -83,5 +83,40 @@ namespace BioChecadorAPI.Controllers
 
             return Ok(new { success = true, message = "Dispositivo desuscrito correctamente." });
         }
+
+        [HttpPost("probar")]
+        public async Task<IActionResult> ProbarPush([FromBody] ProbarPushDto dto, [FromServices] IPushNotificationService pushService)
+        {
+            string? subJson = dto.SubscriptionJson;
+            if (string.IsNullOrWhiteSpace(subJson) && !string.IsNullOrWhiteSpace(dto.Rfc))
+            {
+                var rfcNorm = dto.Rfc.Trim().ToUpperInvariant();
+                var emp = _subStore.ObtenerTodas().FirstOrDefault(e => e.Rfc == rfcNorm);
+                var disp = emp?.Dispositivos?.FirstOrDefault(d => string.IsNullOrWhiteSpace(dto.Dispositivo) || string.Equals(d.Dispositivo, dto.Dispositivo, StringComparison.OrdinalIgnoreCase));
+                subJson = disp?.PushSubscription;
+            }
+
+            if (string.IsNullOrWhiteSpace(subJson))
+            {
+                return BadRequest(new { success = false, message = "No se encontró suscripción push para el usuario o dispositivo especificado." });
+            }
+
+            var resultado = await pushService.EnviarNotificacionAsync(
+                subJson,
+                "Prueba de Recordatorio",
+                "¡Excelente! Las notificaciones de alta prioridad están funcionando en tu dispositivo.",
+                "/home",
+                $"test-{DateTime.Now.Ticks}"
+            );
+
+            if (resultado == PushEnvioResultado.Exitoso)
+            {
+                return Ok(new { success = true, message = "Notificación de prueba enviada exitosamente." });
+            }
+            else
+            {
+                return StatusCode(500, new { success = false, message = $"Error al enviar notificación ({resultado})." });
+            }
+        }
     }
 }

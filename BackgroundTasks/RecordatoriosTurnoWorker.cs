@@ -2,6 +2,7 @@
 using System.Globalization;
 using BioChecadorAPI.Services;
 using BioChecadorAPI.DTOs;
+using BioChecadorAPI.Repositories;
 
 namespace BioChecadorAPI.BackgroundTasks
 {
@@ -10,6 +11,7 @@ namespace BioChecadorAPI.BackgroundTasks
         public string Rfc { get; set; } = string.Empty;
         public string Titulo { get; set; } = string.Empty;
         public string Cuerpo { get; set; } = string.Empty;
+        public string Tag { get; set; } = string.Empty;
         public List<DispositivoPushDto> Dispositivos { get; set; } = new();
     }
 
@@ -17,17 +19,38 @@ namespace BioChecadorAPI.BackgroundTasks
     {
         private readonly IServiceProvider _serviceProvider;
         private readonly IPushSubscriptionStore _subStore;
+        private readonly ILogger<RecordatoriosTurnoWorker> _logger;
         private readonly ConcurrentDictionary<string, HashSet<int>> _etapasEnviadasHoy = new();
         private DateTime _fechaUltimaLimpieza = DateTime.Today;
 
-        public RecordatoriosTurnoWorker(IServiceProvider serviceProvider, IPushSubscriptionStore subStore)
+        public RecordatoriosTurnoWorker(
+            IServiceProvider serviceProvider,
+            IPushSubscriptionStore subStore,
+            ILogger<RecordatoriosTurnoWorker> logger)
         {
             _serviceProvider = serviceProvider;
             _subStore = subStore;
+            _logger = logger;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
+            _logger.LogInformation("RecordatoriosTurnoWorker iniciado.");
+
+            // Sincronizar suscripciones persistidas en Base de Datos SQL (AMN_Biometria)
+            try
+            {
+                using var initScope = _serviceProvider.CreateScope();
+                var amnRepo = initScope.ServiceProvider.GetRequiredService<IAmnRepository>();
+                var checadorService = initScope.ServiceProvider.GetRequiredService<IChecadorService>();
+                await _subStore.SincronizarDesdeBDAsync(amnRepo, checadorService);
+                _logger.LogInformation("Sincronización inicial de suscripciones push completada con éxito.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Advertencia en sincronización inicial de suscripciones push.");
+            }
+
             const int intervaloMinutos = 1;
 
             while (!stoppingToken.IsCancellationRequested)
@@ -60,10 +83,18 @@ namespace BioChecadorAPI.BackgroundTasks
 
                     await ProcesarRecordatoriosAsync(stoppingToken);
                 }
-                catch
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error no controlado en ciclo de RecordatoriosTurnoWorker.");
+                    await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
                 }
             }
+
+            _logger.LogInformation("RecordatoriosTurnoWorker detenido.");
         }
 
         private async Task ProcesarRecordatoriosAsync(CancellationToken stoppingToken)
@@ -78,36 +109,72 @@ namespace BioChecadorAPI.BackgroundTasks
 
             var alertasAEnviar = new List<AlertaEnvioItem>();
 
-            foreach (var emp in empleados)
+            using (var checkScope = _serviceProvider.CreateScope())
             {
-                if (emp.Dispositivos == null || emp.Dispositivos.Count == 0) continue;
+                var amnRepo = checkScope.ServiceProvider.GetRequiredService<IAmnRepository>();
 
-                var diaConfig = emp.Dias?.FirstOrDefault(d => Normalizar(d.DiaNombre) == diaHoyNombre);
-                if (diaConfig == null || !diaConfig.EsLaborable) continue;
-
-                var ultimoMov = emp.UltimoMovimiento;
-                if (emp.FechaUltimoMovimiento != hoyStr)
+                foreach (var emp in empleados)
                 {
-                    ultimoMov = null;
-                }
+                    if (emp.Dispositivos == null || emp.Dispositivos.Count == 0) continue;
 
-                string? proximoTipo = null;
-                string? horaEventoStr = null;
-                string titulo = "";
-                string mensaje = "";
+                    var diaConfig = emp.Dias?.FirstOrDefault(d => Normalizar(d.DiaNombre) == diaHoyNombre);
+                    if (diaConfig == null || !diaConfig.EsLaborable) continue;
 
-                if (!string.IsNullOrEmpty(ultimoMov))
-                {
-                    if (ultimoMov == "ENTRADA" || ultimoMov == "RETARDO")
+                    var ultimoMov = emp.UltimoMovimiento;
+                    if (emp.FechaUltimoMovimiento != hoyStr || string.IsNullOrEmpty(ultimoMov))
                     {
-                        if (!string.IsNullOrWhiteSpace(diaConfig.SalidaComida))
+                        try
                         {
-                            proximoTipo = "SALIDA_COMIDA";
-                            horaEventoStr = diaConfig.SalidaComida;
-                            titulo = "Recordatorio de Comida";
-                            mensaje = "Tu hora de comida inicia";
+                            var movDb = await amnRepo.ObtenerUltimoMovimientoHoyAsync(emp.Rfc);
+                            if (!string.IsNullOrWhiteSpace(movDb))
+                            {
+                                ultimoMov = movDb;
+                                emp.UltimoMovimiento = movDb;
+                                emp.FechaUltimoMovimiento = hoyStr;
+                            }
+                            else
+                            {
+                                ultimoMov = null;
+                            }
                         }
-                        else
+                        catch
+                        {
+                            ultimoMov = null;
+                        }
+                    }
+
+                    string? proximoTipo = null;
+                    string? horaEventoStr = null;
+                    string titulo = "";
+                    string mensaje = "";
+
+                    if (!string.IsNullOrEmpty(ultimoMov))
+                    {
+                        if (ultimoMov == "ENTRADA" || ultimoMov == "RETARDO")
+                        {
+                            if (!string.IsNullOrWhiteSpace(diaConfig.SalidaComida))
+                            {
+                                proximoTipo = "SALIDA_COMIDA";
+                                horaEventoStr = diaConfig.SalidaComida;
+                                titulo = "Recordatorio de Comida";
+                                mensaje = "Tu hora de comida inicia";
+                            }
+                            else
+                            {
+                                proximoTipo = "SALIDA";
+                                horaEventoStr = diaConfig.Salida;
+                                titulo = "Recordatorio de Fin de Turno";
+                                mensaje = "Tu turno finaliza";
+                            }
+                        }
+                        else if (ultimoMov == "SALIDA_COMIDA")
+                        {
+                            proximoTipo = "ENTRADA_COMIDA";
+                            horaEventoStr = diaConfig.RegresoComida;
+                            titulo = "Recordatorio de Fin de Comida";
+                            mensaje = "Tu tiempo de comida termina";
+                        }
+                        else if (ultimoMov == "ENTRADA_COMIDA")
                         {
                             proximoTipo = "SALIDA";
                             horaEventoStr = diaConfig.Salida;
@@ -115,102 +182,91 @@ namespace BioChecadorAPI.BackgroundTasks
                             mensaje = "Tu turno finaliza";
                         }
                     }
-                    else if (ultimoMov == "SALIDA_COMIDA")
+                    else
                     {
-                        proximoTipo = "ENTRADA_COMIDA";
-                        horaEventoStr = diaConfig.RegresoComida;
-                        titulo = "Recordatorio de Fin de Comida";
-                        mensaje = "Tu tiempo de comida termina";
+                        if (EstaPendienteOProximo(diaConfig.Entrada, ahora))
+                        {
+                            proximoTipo = "ENTRADA";
+                            horaEventoStr = diaConfig.Entrada;
+                            titulo = "Recordatorio de Entrada";
+                            mensaje = "Tu turno de trabajo inicia";
+                        }
+                        else if (!string.IsNullOrWhiteSpace(diaConfig.SalidaComida) && EstaPendienteOProximo(diaConfig.SalidaComida, ahora))
+                        {
+                            proximoTipo = "SALIDA_COMIDA";
+                            horaEventoStr = diaConfig.SalidaComida;
+                            titulo = "Recordatorio de Comida";
+                            mensaje = "Tu hora de comida inicia";
+                        }
+                        else if (!string.IsNullOrWhiteSpace(diaConfig.RegresoComida) && EstaPendienteOProximo(diaConfig.RegresoComida, ahora))
+                        {
+                            proximoTipo = "ENTRADA_COMIDA";
+                            horaEventoStr = diaConfig.RegresoComida;
+                            titulo = "Recordatorio de Fin de Comida";
+                            mensaje = "Tu tiempo de comida termina";
+                        }
+                        else if (EstaPendienteOProximo(diaConfig.Salida, ahora))
+                        {
+                            proximoTipo = "SALIDA";
+                            horaEventoStr = diaConfig.Salida;
+                            titulo = "Recordatorio de Fin de Turno";
+                            mensaje = "Tu turno finaliza";
+                        }
                     }
-                    else if (ultimoMov == "ENTRADA_COMIDA")
+
+                    if (string.IsNullOrEmpty(proximoTipo) || string.IsNullOrWhiteSpace(horaEventoStr)) continue;
+
+                    if (!TryParseHora(horaEventoStr, out var horaEvento)) continue;
+
+                    var minutosFaltantes = (horaEvento - ahora).TotalMinutes;
+
+                    int? etapaActual = null;
+                    if (minutosFaltantes <= 11.5 && minutosFaltantes >= 8.0)
                     {
-                        proximoTipo = "SALIDA";
-                        horaEventoStr = diaConfig.Salida;
-                        titulo = "Recordatorio de Fin de Turno";
-                        mensaje = "Tu turno finaliza";
+                        etapaActual = 1;
                     }
+                    else if (minutosFaltantes <= 4.5 && minutosFaltantes >= 1.0)
+                    {
+                        etapaActual = 2;
+                    }
+
+                    if (!etapaActual.HasValue) continue;
+
+                    var claveAlerta = $"{hoy:yyyyMMdd}_{emp.Rfc}_{proximoTipo}";
+
+                    var etapas = _etapasEnviadasHoy.GetOrAdd(claveAlerta, _ => new HashSet<int>());
+                    lock (etapas)
+                    {
+                        if (etapas.Contains(etapaActual.Value)) continue;
+                        etapas.Add(etapaActual.Value);
+                    }
+
+                    int minAprox = (int)Math.Ceiling(minutosFaltantes);
+                    string textoMin = minAprox <= 1 ? "en 1 minuto" : $"en {minAprox} minutos";
+                    string cuerpo = $"{mensaje} {textoMin} (a las {horaEventoStr}). Recuerda checar tu asistencia.";
+                    string tagAlerta = $"reloj-{proximoTipo.ToLowerInvariant()}-{etapaActual.Value}";
+
+                    alertasAEnviar.Add(new AlertaEnvioItem
+                    {
+                        Rfc = emp.Rfc,
+                        Titulo = titulo,
+                        Cuerpo = cuerpo,
+                        Tag = tagAlerta,
+                        Dispositivos = emp.Dispositivos.ToList()
+                    });
                 }
-                else
-                {
-                    if (EstaPendienteOProximo(diaConfig.Entrada, ahora))
-                    {
-                        proximoTipo = "ENTRADA";
-                        horaEventoStr = diaConfig.Entrada;
-                        titulo = "Recordatorio de Entrada";
-                        mensaje = "Tu turno de trabajo inicia";
-                    }
-                    else if (!string.IsNullOrWhiteSpace(diaConfig.SalidaComida) && EstaPendienteOProximo(diaConfig.SalidaComida, ahora))
-                    {
-                        proximoTipo = "SALIDA_COMIDA";
-                        horaEventoStr = diaConfig.SalidaComida;
-                        titulo = "Recordatorio de Comida";
-                        mensaje = "Tu hora de comida inicia";
-                    }
-                    else if (!string.IsNullOrWhiteSpace(diaConfig.RegresoComida) && EstaPendienteOProximo(diaConfig.RegresoComida, ahora))
-                    {
-                        proximoTipo = "ENTRADA_COMIDA";
-                        horaEventoStr = diaConfig.RegresoComida;
-                        titulo = "Recordatorio de Fin de Comida";
-                        mensaje = "Tu tiempo de comida termina";
-                    }
-                    else if (EstaPendienteOProximo(diaConfig.Salida, ahora))
-                    {
-                        proximoTipo = "SALIDA";
-                        horaEventoStr = diaConfig.Salida;
-                        titulo = "Recordatorio de Fin de Turno";
-                        mensaje = "Tu turno finaliza";
-                    }
-                }
-
-                if (string.IsNullOrEmpty(proximoTipo) || string.IsNullOrWhiteSpace(horaEventoStr)) continue;
-
-                if (!TryParseHora(horaEventoStr, out var horaEvento)) continue;
-
-                var minutosFaltantes = (horaEvento - ahora).TotalMinutes;
-
-                int? etapaActual = null;
-                if (minutosFaltantes <= 11.5 && minutosFaltantes >= 8.0)
-                {
-                    etapaActual = 1;
-                }
-                else if (minutosFaltantes <= 4.5 && minutosFaltantes >= 1.0)
-                {
-                    etapaActual = 2;
-                }
-
-                if (!etapaActual.HasValue) continue;
-
-                var claveAlerta = $"{hoy:yyyyMMdd}_{emp.Rfc}_{proximoTipo}";
-
-                var etapas = _etapasEnviadasHoy.GetOrAdd(claveAlerta, _ => new HashSet<int>());
-                lock (etapas)
-                {
-                    if (etapas.Contains(etapaActual.Value)) continue;
-                    etapas.Add(etapaActual.Value);
-                }
-
-                int minAprox = (int)Math.Ceiling(minutosFaltantes);
-                string textoMin = minAprox <= 1 ? "en 1 minuto" : $"en {minAprox} minutos";
-                string cuerpo = $"{mensaje} {textoMin} (a las {horaEventoStr}). Recuerda checar tu asistencia.";
-
-                alertasAEnviar.Add(new AlertaEnvioItem
-                {
-                    Rfc = emp.Rfc,
-                    Titulo = titulo,
-                    Cuerpo = cuerpo,
-                    Dispositivos = emp.Dispositivos.ToList()
-                });
             }
 
             if (alertasAEnviar.Count == 0) return;
 
-            using var scope = _serviceProvider.CreateScope();
-            var pushService = scope.ServiceProvider.GetRequiredService<IPushNotificationService>();
-            var dispositivosFallidos = new ConcurrentBag<(string Rfc, string Dispositivo)>();
+            using var sendScope = _serviceProvider.CreateScope();
+            var pushService = sendScope.ServiceProvider.GetRequiredService<IPushNotificationService>();
+            var amnRepoRem = sendScope.ServiceProvider.GetRequiredService<IAmnRepository>();
+            var dispositivosExpirados = new ConcurrentBag<(string Rfc, string Dispositivo)>();
 
             await Parallel.ForEachAsync(alertasAEnviar, new ParallelOptions
             {
-                MaxDegreeOfParallelism = 25,
+                MaxDegreeOfParallelism = 15,
                 CancellationToken = stoppingToken
             }, async (alerta, ct) =>
             {
@@ -218,27 +274,39 @@ namespace BioChecadorAPI.BackgroundTasks
                 {
                     try
                     {
-                        using var ctsTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+                        // 10 segundos de timeout para evitar sockets colgados pero dando margen a celulares
+                        using var ctsTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, ctsTimeout.Token);
 
-                        var ok = await pushService.EnviarNotificacionAsync(disp.PushSubscription, alerta.Titulo, alerta.Cuerpo);
-                        if (!ok)
+                        var res = await pushService.EnviarNotificacionAsync(
+                            disp.PushSubscription,
+                            alerta.Titulo,
+                            alerta.Cuerpo,
+                            url: "/home",
+                            tag: alerta.Tag,
+                            ct: linkedCts.Token
+                        );
+
+                        if (res == PushEnvioResultado.SuscripcionExpirada)
                         {
-                            dispositivosFallidos.Add((alerta.Rfc, disp.Dispositivo));
+                            dispositivosExpirados.Add((alerta.Rfc, disp.Dispositivo));
                         }
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        dispositivosFallidos.Add((alerta.Rfc, disp.Dispositivo));
+                        _logger.LogWarning(ex, "Error al disparar push a RFC {Rfc} - Dispositivo {Dispositivo}", alerta.Rfc, disp.Dispositivo);
                     }
                 }
             });
 
-            if (!dispositivosFallidos.IsEmpty)
+            // ÚNICAMENTE se eliminan dispositivos si el servidor push (FCM) confirmó 410 Gone / 404 NotFound
+            if (!dispositivosExpirados.IsEmpty)
             {
-                foreach (var (rfc, disp) in dispositivosFallidos)
+                foreach (var (rfc, disp) in dispositivosExpirados)
                 {
+                    _logger.LogInformation("Eliminando dispositivo expirado/inválido: RFC {Rfc} - {Dispositivo}", rfc, disp);
                     await _subStore.EliminarDispositivoAsync(rfc, disp);
+                    await amnRepoRem.EliminarSuscripcionPushAsync(rfc, disp);
                 }
             }
         }
