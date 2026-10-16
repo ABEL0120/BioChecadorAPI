@@ -1,4 +1,4 @@
-﻿using BioChecadorAPI.DTOs;
+using BioChecadorAPI.DTOs;
 using BioChecadorAPI.Helpers;
 using BioChecadorAPI.Repositories;
 using System.Globalization;
@@ -104,66 +104,27 @@ namespace BioChecadorAPI.Services
                 };
             }
 
-            int minutosBrutos = (int)(d2 - d1).TotalMinutes;
-            if (minutosBrutos <= 0)
-            {
-                return new ApiResponse<CalcularTiempoPermisoResponseDto>
-                {
-                    Success = true,
-                    Message = "La hora o fecha de fin debe ser posterior a la de inicio.",
-                    Data = new CalcularTiempoPermisoResponseDto
-                    {
-                        EsValido = false,
-                        ErrorValidacion = "La hora de fin debe ser posterior a la hora de inicio.",
-                        TiempoTexto = "0h 0m"
-                    }
-                };
-            }
-
             var turno = await _permisosRepository.ObtenerTurnoFilaAsync(dto.Compania, dto.M103);
-            int minutosComida = PermisosHelper.CalcularMinutosComida(turno, d1, d2);
-            int minutosNetos = minutosBrutos - minutosComida;
-
-            if (minutosNetos <= 0)
-            {
-                return new ApiResponse<CalcularTiempoPermisoResponseDto>
-                {
-                    Success = true,
-                    Message = "El horario queda dentro de la hora de comida de tu turno.",
-                    Data = new CalcularTiempoPermisoResponseDto
-                    {
-                        EsValido = false,
-                        ErrorValidacion = "El horario capturado queda dentro de tu hora de comida; no genera tiempo de permiso.",
-                        MinutosBrutos = minutosBrutos,
-                        MinutosComidaDescontados = minutosComida,
-                        MinutosNetos = 0,
-                        TiempoTexto = "0h 0m (comida)",
-                        CruzaComida = true
-                    }
-                };
-            }
-
-            bool permiteVacaciones = minutosNetos >= 420;
-            string detalle = minutosComida > 0
-                ? $"Se descontaron {minutosComida} minutos por horario de comida."
-                : string.Empty;
+            var calc = PermisosHelper.CalcularTiempoPermiso(turno, d1, d2);
 
             var res = new CalcularTiempoPermisoResponseDto
             {
-                EsValido = true,
-                MinutosBrutos = minutosBrutos,
-                MinutosComidaDescontados = minutosComida,
-                MinutosNetos = minutosNetos,
-                TiempoTexto = PermisosHelper.FormatearTiempo(minutosNetos),
-                PermiteVacaciones = permiteVacaciones,
-                CruzaComida = minutosComida > 0,
-                MensajeDetalle = detalle
+                EsValido = calc.EsValido,
+                ErrorValidacion = calc.ErrorValidacion,
+                MinutosBrutos = calc.MinutosBrutos,
+                MinutosComidaDescontados = calc.MinutosComidaDescontados,
+                MinutosNetos = calc.MinutosNetos,
+                TiempoTexto = calc.TiempoTexto,
+                PermiteVacaciones = calc.PermiteVacaciones,
+                DiasLaborablesVacaciones = calc.DiasLaborables,
+                CruzaComida = calc.CruzaComida,
+                MensajeDetalle = calc.MensajeDetalle
             };
 
             return new ApiResponse<CalcularTiempoPermisoResponseDto>
             {
                 Success = true,
-                Message = "Cálculo realizado con éxito.",
+                Message = calc.EsValido ? "Cálculo realizado con éxito." : (calc.ErrorValidacion ?? "Horario no válido."),
                 Data = res
             };
         }
@@ -227,28 +188,21 @@ namespace BioChecadorAPI.Services
                     };
                 }
 
-                int minutosBrutos = (int)(d2 - d1).TotalMinutes;
-                if (minutosBrutos <= 0)
-                {
-                    return new ApiResponse<int>
-                    {
-                        Success = false,
-                        Message = "La hora y fecha de fin deben ser posteriores a las de inicio."
-                    };
-                }
-
                 var turno = await _permisosRepository.ObtenerTurnoFilaAsync(dto.Compania, dto.M103);
-                int minutosComida = PermisosHelper.CalcularMinutosComida(turno, d1, d2);
-                int minutosNetos = minutosBrutos - minutosComida;
+                var calc = PermisosHelper.CalcularTiempoPermiso(turno, d1, d2);
 
-                if (minutosNetos <= 0)
+                if (!calc.EsValido || calc.MinutosNetos <= 0)
                 {
                     return new ApiResponse<int>
                     {
                         Success = false,
-                        Message = "El horario capturado queda completamente dentro de la hora de comida de tu turno."
+                        Message = string.IsNullOrWhiteSpace(calc.ErrorValidacion)
+                            ? "El horario seleccionado no es válido para solicitar permiso."
+                            : calc.ErrorValidacion
                     };
                 }
+
+                int minutosNetos = calc.MinutosNetos;
 
                 bool tieneTraslape = await _permisosRepository.ExisteTraslapePermisoAsync(
                     dto.Compania, dto.M103, dto.FechaInicio, dto.HoraInicio, dto.FechaFin, dto.HoraFin, 0);
@@ -262,7 +216,7 @@ namespace BioChecadorAPI.Services
                     };
                 }
 
-int nuevoNumero = await _permisosRepository.CrearPermisoAsync(dto, minutosNetos, 0);
+                int nuevoNumero = await _permisosRepository.CrearPermisoAsync(dto, minutosNetos, 0);
                 return new ApiResponse<int>
                 {
                     Success = true,
@@ -317,28 +271,21 @@ int nuevoNumero = await _permisosRepository.CrearPermisoAsync(dto, minutosNetos,
                     };
                 }
 
-                int minutosBrutos = (int)(d2 - d1).TotalMinutes;
-                if (minutosBrutos <= 0)
-                {
-                    return new ApiResponse<bool>
-                    {
-                        Success = false,
-                        Message = "La hora y fecha de fin deben ser posteriores a las de inicio."
-                    };
-                }
-
                 var turno = await _permisosRepository.ObtenerTurnoFilaAsync(dto.Compania, dto.M103);
-                int minutosComida = PermisosHelper.CalcularMinutosComida(turno, d1, d2);
-                int minutosNetos = minutosBrutos - minutosComida;
+                var calc = PermisosHelper.CalcularTiempoPermiso(turno, d1, d2);
 
-                if (minutosNetos <= 0)
+                if (!calc.EsValido || calc.MinutosNetos <= 0)
                 {
                     return new ApiResponse<bool>
                     {
                         Success = false,
-                        Message = "El horario capturado queda completamente dentro de la hora de comida de tu turno."
+                        Message = string.IsNullOrWhiteSpace(calc.ErrorValidacion)
+                            ? "El horario seleccionado no es válido para solicitar permiso."
+                            : calc.ErrorValidacion
                     };
                 }
+
+                int minutosNetos = calc.MinutosNetos;
 
                 bool tieneTraslape = await _permisosRepository.ExisteTraslapePermisoAsync(
                     dto.Compania, dto.M103, dto.FechaInicio, dto.HoraInicio, dto.FechaFin, dto.HoraFin, dto.Numero);
@@ -351,8 +298,6 @@ int nuevoNumero = await _permisosRepository.CrearPermisoAsync(dto, minutosNetos,
                         Message = "Ya tienes otro permiso registrado que se empalma con este nuevo horario."
                     };
                 }
-
-
 
                 bool actualizado = await _permisosRepository.ActualizarPermisoAsync(dto, minutosNetos);
                 return new ApiResponse<bool>

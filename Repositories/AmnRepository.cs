@@ -105,10 +105,18 @@ namespace BioChecadorAPI.Repositories
             cmdUltimo.Parameters.Add("@rfc", SqlDbType.VarChar, 13).Value = rfc;
             var resultUltimo = await cmdUltimo.ExecuteScalarAsync();
             string ultimoMov = resultUltimo?.ToString()?.ToUpperInvariant() ?? string.Empty;
+
+            const string querySalida = @"SELECT CASE WHEN EXISTS (SELECT 1 FROM AMN_Registros_Checador WHERE RFC = @rfc AND CONVERT(date, Fecha_Hora) = CONVERT(date, GETDATE()) AND UPPER(Tipo_Movimiento) LIKE '%SALIDA%') THEN 1 ELSE 0 END";
+            using var cmdSalida = new SqlCommand(querySalida, conn);
+            cmdSalida.Parameters.Add("@rfc", SqlDbType.VarChar, 13).Value = rfc;
+            var resultSalida = await cmdSalida.ExecuteScalarAsync();
+            bool tieneSalidaHoy = (resultSalida as int? ?? Convert.ToInt32(resultSalida ?? 0)) == 1;
+
             return new EstadoEmpleadoResponseDto
             {
                 Existe = true,
                 UltimoMovimientoHoy = ultimoMov,
+                TieneSalidaHoy = tieneSalidaHoy,
                 TieneBiometria = tieneBiometria,
                 Rfc = rfcEncontrado,
                 Nombre = nombre,

@@ -230,28 +230,8 @@ namespace BioChecadorAPI.Services
                 (double)empleado.LongitudEmpresa
             );
 
-            var fueraDeRango = distancia > empleado.RadioToleranciaMetros;
-            //var trabajoRemoto = empleado.TrabajoRemoto;
-            var trabajoRemoto = "S";
-            if (fueraDeRango && trabajoRemoto == "N")
-            {
-                return new ApiResponse<RegistroChecadaResponseDto>
-                {
-                    Success = false,
-                    Message = $"Ubicación fuera del rango permitido. Distancia: {Math.Round(distancia, 2)}m (Máximo: {empleado.RadioToleranciaMetros}m)."
-                };
-            }
-
-            //var ultimoMovimientoHoy = await _amnRepository.ObtenerUltimoMovimientoHoyAsync(rfcLimpio);
-            //var (esValido, mensajeError) = ValidarTransicion(ultimoMovimientoHoy, dto.TipoMovimiento);
-            //if (!esValido)
-            //{
-            //    return new ApiResponse<RegistroChecadaResponseDto>
-            //    {
-            //        Success = false,
-            //        Message = mensajeError
-            //    };
-            //}
+            // Sin restriccion de geocercas: permite checar en cualquier lugar sin bloquear
+            var fueraDeRango = false;
 
             var guardado = await _amnRepository.InsertarChecadaAsync(
                 rfcLimpio,

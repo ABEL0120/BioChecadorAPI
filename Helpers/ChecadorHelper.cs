@@ -21,9 +21,9 @@ namespace BioChecadorAPI.Helpers
             [""] = new() { "ENTRADA", "RETARDO" },
             ["ENTRADA"] = new() { "SALIDA_COMIDA", "SALIDA" },
             ["RETARDO"] = new() { "SALIDA_COMIDA", "SALIDA" },
-            ["SALIDA_COMIDA"] = new() { "ENTRADA_COMIDA" },
+            ["SALIDA_COMIDA"] = new() { "ENTRADA_COMIDA", "SALIDA" },
             ["ENTRADA_COMIDA"] = new() { "SALIDA_COMIDA", "SALIDA" },
-            ["SALIDA"] = new()
+            ["SALIDA"] = new() { "ENTRADA", "RETARDO", "SALIDA" }
         };
 
         private static string GenerarMensajeError(string actual, string nuevo) => (actual, nuevo) switch
@@ -117,20 +117,8 @@ namespace BioChecadorAPI.Helpers
 
         public static (bool EsValido, string Mensaje) ValidarTransicion(string? ultimoMovimiento, string? nuevoMovimiento)
         {
-            string actual = ultimoMovimiento?.Trim().ToUpperInvariant() ?? string.Empty;
-            string nuevo = nuevoMovimiento?.Trim().ToUpperInvariant() ?? string.Empty;
-
-            if (!TransicionesValidas.TryGetValue(actual, out var permitidos))
-            {
-                return (false, "Estado de movimiento no reconocido.");
-            }
-
-            if (permitidos.Contains(nuevo))
-            {
-                return (true, string.Empty);
-            }
-
-            return (false, GenerarMensajeError(actual, nuevo));
+            return (true, string.Empty);
         }
     }
 }
+

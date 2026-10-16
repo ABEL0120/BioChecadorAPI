@@ -99,6 +99,7 @@ namespace BioChecadorAPI.DTOs
     {
         public bool Existe { get; set; }
         public string UltimoMovimientoHoy { get; set; } = String.Empty;
+        public bool TieneSalidaHoy { get; set; }
         public bool TieneBiometria { get; set; }
         public string Mensaje { get; set; } = string.Empty;
         public string Rfc { get; set; } = string.Empty;
@@ -168,3 +169,5 @@ namespace BioChecadorAPI.DTOs
         public string FechaExpiracion { get; set; } = string.Empty;
     }
 }
+
+
