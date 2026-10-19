@@ -148,8 +148,9 @@ namespace BioChecadorAPI.Repositories
         public async Task<DataRow?> ObtenerTurnoFilaAsync(int compania, int m103)
         {
             using var conn = (SqlConnection)_connectionFactory.CreateConnection();
-            const string query = @"SELECT t.* FROM Turnos t
+            const string query = @"SELECT t.*, ISNULL(c.Inicio_Nomina, 'SAB') AS InicioNomina FROM Turnos t
                 INNER JOIN AMN a ON a.M147 = t.M147 AND a.Compañia = t.Compañia
+                LEFT JOIN Compañias c ON c.Numero_Compañia = t.Compañia
                 WHERE a.M103 = @m103 AND a.Compañia = @compania";
 
             using var cmd = new SqlCommand(query, conn);

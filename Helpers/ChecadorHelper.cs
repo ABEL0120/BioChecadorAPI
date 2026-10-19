@@ -5,7 +5,7 @@ namespace BioChecadorAPI.Helpers
 {
     public static class ChecadorHelper
     {
-        private static readonly Dictionary<string, string[]> SecuenciasDias = new()
+        public static readonly Dictionary<string, string[]> SecuenciasDias = new()
         {
             ["LUN"] = new[] { "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo" },
             ["MAR"] = new[] { "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo", "Lunes" },

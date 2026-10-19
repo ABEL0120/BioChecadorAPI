@@ -52,6 +52,16 @@ namespace BioChecadorAPI.Services
                 };
             }
 
+            var rfcNorm = empleado.Rfc.Trim().ToUpperInvariant();
+            var dispNorm = (request.DispositivoNombre ?? string.Empty).Trim();
+            var todasSuscripciones = _subStore.ObtenerTodas();
+            bool tienePushActivo = todasSuscripciones.Any(e => 
+                e.Rfc.Trim().ToUpperInvariant() == rfcNorm &&
+                e.Dispositivos != null &&
+                e.Dispositivos.Any(d => (string.IsNullOrWhiteSpace(dispNorm) || string.Equals(d.Dispositivo.Trim(), dispNorm, StringComparison.OrdinalIgnoreCase)) && !string.IsNullOrWhiteSpace(d.PushSubscription))
+            );
+            empleado.TieneSuscripcionPush = tienePushActivo;
+
             return new ApiResponse<EstadoEmpleadoResponseDto>
             {
                 Success = true,
@@ -306,3 +316,4 @@ namespace BioChecadorAPI.Services
         }
     }
 }
+
