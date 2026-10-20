@@ -24,6 +24,7 @@ namespace BioChecadorAPI.Repositories
         Task<bool> ConsultarExistenciaSolicitud(SolicitudCreacionDto dto);
         Task<bool> GuardarSuscripcionPushAsync(string rfc, string dispositivoNombre, string subscriptionJson);
         Task<bool> EliminarSuscripcionPushAsync(string rfc, string dispositivoNombre);
+        Task<string?> ObtenerSuscripcionPushAsync(string rfc, string dispositivoNombre);
         Task<List<(string Rfc, string Dispositivo, string SubscriptionJson)>> ObtenerSuscripcionesPushActivasAsync();
     }
 
@@ -288,10 +289,25 @@ namespace BioChecadorAPI.Repositories
             return rows > 0;
         }
 
+        public async Task<string?> ObtenerSuscripcionPushAsync(string rfc, string dispositivoNombre)
+        {
+            using var conn = (SqlConnection)_connectionFactory.CreateConnection();
+            const string query = @"SELECT ISNULL(Push_Subscription, '') 
+                                   FROM AMN_Biometria 
+                                   WHERE RFC = @rfc AND Dispositivo_Nombre = @dispositivo AND Baja = ''";
+            using var cmd = new SqlCommand(query, conn);
+            cmd.Parameters.Add("@rfc", SqlDbType.VarChar, 13).Value = (rfc ?? string.Empty).Trim().ToUpperInvariant();
+            cmd.Parameters.Add("@dispositivo", SqlDbType.VarChar, 150).Value = (dispositivoNombre ?? string.Empty).Trim();
+            await conn.OpenAsync();
+            var res = await cmd.ExecuteScalarAsync();
+            var str = res?.ToString()?.Trim();
+            return string.IsNullOrWhiteSpace(str) ? null : str;
+        }
+
         public async Task<bool> EliminarSuscripcionPushAsync(string rfc, string dispositivoNombre)
         {
             using var conn = (SqlConnection)_connectionFactory.CreateConnection();
-            const string query = @"UPDATE AMN_Biometria SET Push_Subscription = '' WHERE RFC = @rfc AND Dispositivo_Nombre = @dispositivo AND Baja = ''";
+            const string query = @"UPDATE AMN_Biometria SET Push_Subscription = '' WHERE RFC = @rfc AND (ISNULL(@dispositivo, '') = '' OR Dispositivo_Nombre = @dispositivo OR Dispositivo_Nombre = '') AND Baja = ''";
             using var cmd = new SqlCommand(query, conn);
             cmd.Parameters.Add("@rfc", SqlDbType.VarChar, 13).Value = rfc.Trim().ToUpperInvariant();
             cmd.Parameters.Add("@dispositivo", SqlDbType.VarChar, 150).Value = dispositivoNombre ?? string.Empty;

@@ -24,21 +24,40 @@ namespace BioChecadorAPI.Controllers
         }
 
         [HttpGet("estado")]
-        public IActionResult ObtenerEstado([FromQuery] string rfc, [FromQuery] string? dispositivo)
+        public async Task<IActionResult> ObtenerEstado([FromQuery] string rfc, [FromQuery] string? dispositivo)
         {
             if (string.IsNullOrWhiteSpace(rfc))
             {
                 return BadRequest(new { success = false, message = "RFC es obligatorio." });
             }
-
             var rfcNorm = rfc.Trim().ToUpperInvariant();
             var dispNorm = (dispositivo ?? string.Empty).Trim();
             var todas = _subStore.ObtenerTodas();
-            bool tieneSuscripcion = todas.Any(e => 
-                e.Rfc.Trim().ToUpperInvariant() == rfcNorm &&
-                e.Dispositivos != null &&
-                e.Dispositivos.Any(d => (string.IsNullOrWhiteSpace(dispNorm) || string.Equals(d.Dispositivo.Trim(), dispNorm, StringComparison.OrdinalIgnoreCase)) && !string.IsNullOrWhiteSpace(d.PushSubscription))
+            var empJson = todas.FirstOrDefault(e => e.Rfc.Trim().ToUpperInvariant() == rfcNorm);
+            var dispJson = empJson?.Dispositivos?.FirstOrDefault(d => 
+                (string.IsNullOrWhiteSpace(dispNorm) || string.Equals(d.Dispositivo.Trim(), dispNorm, StringComparison.OrdinalIgnoreCase)) && 
+                !string.IsNullOrWhiteSpace(d.PushSubscription)
             );
+            bool existeEnJson = dispJson != null;
+            var subBd = await _amnRepo.ObtenerSuscripcionPushAsync(rfcNorm, dispNorm);
+            bool existeEnBd = !string.IsNullOrWhiteSpace(subBd);
+            bool tieneSuscripcion = false;
+            if (existeEnJson && existeEnBd)
+            {
+                tieneSuscripcion = true;
+            }
+            else
+            {
+                if (existeEnJson)
+                {
+                    await _subStore.EliminarDispositivoAsync(rfcNorm, dispNorm);
+                }
+                if (existeEnBd)
+                {
+                    await _amnRepo.EliminarSuscripcionPushAsync(rfcNorm, dispNorm);
+                }
+                tieneSuscripcion = false;
+            }
 
             return Ok(new { success = true, tieneSuscripcion });
         }

@@ -54,13 +54,37 @@ namespace BioChecadorAPI.Services
 
             var rfcNorm = empleado.Rfc.Trim().ToUpperInvariant();
             var dispNorm = (request.DispositivoNombre ?? string.Empty).Trim();
+
+            // 1. Verificar existencia en JSON
             var todasSuscripciones = _subStore.ObtenerTodas();
-            bool tienePushActivo = todasSuscripciones.Any(e => 
-                e.Rfc.Trim().ToUpperInvariant() == rfcNorm &&
-                e.Dispositivos != null &&
-                e.Dispositivos.Any(d => (string.IsNullOrWhiteSpace(dispNorm) || string.Equals(d.Dispositivo.Trim(), dispNorm, StringComparison.OrdinalIgnoreCase)) && !string.IsNullOrWhiteSpace(d.PushSubscription))
+            var empJson = todasSuscripciones.FirstOrDefault(e => e.Rfc.Trim().ToUpperInvariant() == rfcNorm);
+            var dispJson = empJson?.Dispositivos?.FirstOrDefault(d => 
+                (string.IsNullOrWhiteSpace(dispNorm) || string.Equals(d.Dispositivo.Trim(), dispNorm, StringComparison.OrdinalIgnoreCase)) && 
+                !string.IsNullOrWhiteSpace(d.PushSubscription)
             );
-            empleado.TieneSuscripcionPush = tienePushActivo;
+            bool existeEnJson = dispJson != null;
+
+            // 2. Verificar existencia en Base de Datos (AMN_Biometria)
+            var subBd = await _amnRepository.ObtenerSuscripcionPushAsync(rfcNorm, dispNorm);
+            bool existeEnBd = !string.IsNullOrWhiteSpace(subBd);
+
+            // Regla estricta: Si falta en cualquiera de los dos (JSON o BD), se limpia en ambos y tienePushActivo es false
+            if (existeEnJson && existeEnBd)
+            {
+                empleado.TieneSuscripcionPush = true;
+            }
+            else
+            {
+                if (existeEnJson)
+                {
+                    await _subStore.EliminarDispositivoAsync(rfcNorm, dispNorm);
+                }
+                if (existeEnBd)
+                {
+                    await _amnRepository.EliminarSuscripcionPushAsync(rfcNorm, dispNorm);
+                }
+                empleado.TieneSuscripcionPush = false;
+            }
 
             return new ApiResponse<EstadoEmpleadoResponseDto>
             {

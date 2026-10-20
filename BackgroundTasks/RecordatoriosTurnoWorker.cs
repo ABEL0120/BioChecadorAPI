@@ -99,6 +99,17 @@ namespace BioChecadorAPI.BackgroundTasks
 
         private async Task ProcesarRecordatoriosAsync(CancellationToken stoppingToken)
         {
+            try
+            {
+                using var syncScope = _serviceProvider.CreateScope();
+                var amnRepo = syncScope.ServiceProvider.GetRequiredService<IAmnRepository>();
+                var checadorService = syncScope.ServiceProvider.GetRequiredService<IChecadorService>();
+                await _subStore.SincronizarDesdeBDAsync(amnRepo, checadorService);
+            }
+            catch (Exception exSync)
+            {
+                _logger.LogWarning(exSync, "Aviso en sincronización periódica de suscripciones push.");
+            }
             var empleados = _subStore.ObtenerTodas();
             if (empleados.Count == 0) return;
 
