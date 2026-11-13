@@ -1,4 +1,4 @@
-﻿using BioChecadorAPI.DTOs;
+using BioChecadorAPI.DTOs;
 using BioChecadorAPI.Services;
 using Microsoft.AspNetCore.Mvc;
 using static BioChecadorAPI.Helpers.ResponseHelper;
@@ -177,6 +177,38 @@ namespace BioChecadorAPI.Controllers
             }
 
             return Ok(resultado);
+        }
+
+        [HttpPost("checador-fisico")]
+        [ProducesResponseType(typeof(ApiResponse<ChecadorFisicoResponseDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<ChecadorFisicoResponseDto>), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ApiResponse<ChecadorFisicoResponseDto>), StatusCodes.Status401Unauthorized)]
+        public async Task<IActionResult> ChecadorFisico([FromBody] ChecadorFisicoRequestDto dto)
+        {
+            if (!ModelState.IsValid)
+            {
+                var errores = string.Join(" | ", ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => !string.IsNullOrWhiteSpace(e.ErrorMessage) ? e.ErrorMessage : e.Exception?.Message));
+
+                return BadRequest(new ApiResponse<ChecadorFisicoResponseDto>
+                {
+                    Success = false,
+                    Message = string.IsNullOrWhiteSpace(errores) ? "Parámetros de solicitud inválidos." : errores
+                });
+            }
+
+            string userAgent = Request.Headers.UserAgent.ToString();
+            var (statusCode, respuesta) = await _checadorService.RegistrarChecadaChecadorFisicoAsync(dto, userAgent);
+            return StatusCode(statusCode, respuesta);
+        }
+
+        [HttpGet("checador-fisico/ultimo-movimiento-movil")]
+        [ProducesResponseType(typeof(ApiResponse<UltimoMovimientoMovilDto?>), StatusCodes.Status200OK)]
+        public async Task<IActionResult> ObtenerUltimoMovimientoMovil([FromQuery] int desdeNumero = 0)
+        {
+            var respuesta = await _checadorService.ObtenerUltimoMovimientoMovilAsync(desdeNumero);
+            return Ok(respuesta);
         }
 
         //----------------

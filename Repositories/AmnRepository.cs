@@ -1,7 +1,8 @@
-﻿using BioChecadorAPI.Data;
+using BioChecadorAPI.Data;
 using BioChecadorAPI.DTOs;
 using BioChecadorAPI.Helpers;
 using BioChecadorAPI.Models;
+using Dapper;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.Data.SqlClient;
 using System.Data;
@@ -26,6 +27,11 @@ namespace BioChecadorAPI.Repositories
         Task<bool> EliminarSuscripcionPushAsync(string rfc, string dispositivoNombre);
         Task<string?> ObtenerSuscripcionPushAsync(string rfc, string dispositivoNombre);
         Task<List<(string Rfc, string Dispositivo, string SubscriptionJson)>> ObtenerSuscripcionesPushActivasAsync();
+        Task<PasskeyCredencialDto?> ObtenerCredencialPasskeyPorIdAsync(IEnumerable<string> credentialIds);
+        Task ActualizarSignCountPasskeyAsync(int numero, long signCount);
+        Task<string> ObtenerUltimoMovimientoDiaAsync(string rfc, string fechaHoy);
+        Task<(bool Insertado, int Numero, string FechaHora)> InsertarChecadaChecadorFisicoAsync(string rfc, decimal latitud, decimal longitud, string userAgent, string dispositivoNombre, string tipoMovimiento);
+        Task<UltimoMovimientoMovilDto?> ObtenerUltimoMovimientoMovilAsync(int desdeNumero);
     }
 
     public class AmnRepository : IAmnRepository
@@ -345,6 +351,157 @@ namespace BioChecadorAPI.Repositories
             {
             }
             return list;
+        }
+
+        public async Task<PasskeyCredencialDto?> ObtenerCredencialPasskeyPorIdAsync(IEnumerable<string> credentialIds)
+        {
+            var listaIds = credentialIds
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+
+            if (listaIds.Length == 0)
+            {
+                return null;
+            }
+
+            using var conn = _connectionFactory.CreateConnection();
+            const string query = @"SELECT TOP 1
+                b.Numero,
+                RTRIM(b.RFC) AS Rfc,
+                b.Credential_Id AS CredentialId,
+                b.Public_Key AS PublicKey,
+                b.Sign_Count AS SignCount,
+                ISNULL(b.Dispositivo_Nombre, '') AS DispositivoNombre,
+                ISNULL(a.Compañia, 0) AS NumeroCompania,
+                ISNULL(TRY_CAST(a.M103 AS INT), 0) AS NumeroEmpleado,
+                RTRIM(ISNULL(a.M104, '')) AS Nombre
+            FROM AMN_Biometria b
+            INNER JOIN AMN a ON a.M105 = b.RFC AND a.M130 = ''
+            WHERE b.Credential_Id IN @CredentialIds AND b.Baja = ''";
+
+            return await conn.QueryFirstOrDefaultAsync<PasskeyCredencialDto>(query, new { CredentialIds = listaIds });
+        }
+
+        public async Task ActualizarSignCountPasskeyAsync(int numero, long signCount)
+        {
+            using var conn = _connectionFactory.CreateConnection();
+            const string query = @"UPDATE AMN_Biometria SET Sign_Count = @SignCount WHERE Numero = @Numero";
+            await conn.ExecuteAsync(query, new { Numero = numero, SignCount = signCount });
+        }
+
+        public async Task<string> ObtenerUltimoMovimientoDiaAsync(string rfc, string fechaHoy)
+        {
+            using var conn = _connectionFactory.CreateConnection();
+            const string query = @"SELECT TOP 1 UPPER(RTRIM(Tipo_Movimiento))
+            FROM AMN_Registros_Checador
+            WHERE RFC = @Rfc AND LEFT(Fecha_Hora, 10) = @FechaHoy
+            ORDER BY Fecha_Hora DESC, Numero DESC";
+
+            var resultado = await conn.QueryFirstOrDefaultAsync<string?>(query, new { Rfc = rfc, FechaHoy = fechaHoy });
+            return resultado?.Trim().ToUpperInvariant() ?? string.Empty;
+        }
+
+        public async Task<(bool Insertado, int Numero, string FechaHora)> InsertarChecadaChecadorFisicoAsync(
+            string rfc,
+            decimal latitud,
+            decimal longitud,
+            string userAgent,
+            string dispositivoNombre,
+            string tipoMovimiento)
+        {
+            using var conn = (SqlConnection)_connectionFactory.CreateConnection();
+            await conn.OpenAsync();
+            using var tx = await conn.BeginTransactionAsync();
+
+            const string queryEmpleado = @"SELECT TOP 1
+                ISNULL(Compañia, 0) AS NumeroCompania,
+                ISNULL(TRY_CAST(M103 AS INT), 0) AS NumeroEmpleado
+            FROM AMN
+            WHERE M105 = @Rfc AND M130 = ''";
+
+            var empleado = await conn.QueryFirstOrDefaultAsync<EmpleadoCompaniaRow>(
+                queryEmpleado,
+                new { Rfc = rfc },
+                transaction: tx
+            );
+
+            if (empleado == null)
+            {
+                await tx.RollbackAsync();
+                return (false, 0, string.Empty);
+            }
+
+            const string queryNumero = @"SELECT ISNULL(MAX(Numero), 0) + 1 FROM AMN_Registros_Checador WITH (UPDLOCK, HOLDLOCK)";
+            int siguienteNumero = await conn.ExecuteScalarAsync<int>(queryNumero, transaction: tx);
+
+            string fechaHora = FormatearFechaHora(DateTime.Now);
+            string tipoNormalizado = tipoMovimiento.Trim().ToUpperInvariant();
+            string userAgentSeguro = userAgent ?? string.Empty;
+            if (userAgentSeguro.Length > 500)
+            {
+                userAgentSeguro = userAgentSeguro[..500];
+            }
+
+            string dispositivoSeguro = dispositivoNombre ?? string.Empty;
+            if (dispositivoSeguro.Length > 150)
+            {
+                dispositivoSeguro = dispositivoSeguro[..150];
+            }
+
+            const string queryInsert = @"INSERT INTO AMN_Registros_Checador
+                (Numero, RFC, Numero_Compañia, Fecha_Hora, Dispositivo_User_Agent, Dispositivo_Nombre, Tipo_Movimiento, Firma_Valida, Latitud, Longitud, Fecha_Hora_Registro)
+            VALUES
+                (@Numero, @Rfc, @NumeroCompania, @FechaHora, @UserAgent, @DispositivoNombre, @TipoMovimiento, 'S', @Latitud, @Longitud, @FechaHoraRegistro)";
+
+            int rows = await conn.ExecuteAsync(queryInsert, new
+            {
+                Numero = siguienteNumero,
+                Rfc = rfc,
+                NumeroCompania = empleado.NumeroCompania,
+                FechaHora = fechaHora,
+                UserAgent = userAgentSeguro,
+                DispositivoNombre = dispositivoSeguro,
+                TipoMovimiento = tipoNormalizado,
+                Latitud = latitud,
+                Longitud = longitud,
+                FechaHoraRegistro = fechaHora
+            }, transaction: tx);
+
+            await tx.CommitAsync();
+
+            if (rows > 0)
+            {
+                await InsertarKardexAsync(tipoNormalizado, conn, empleado.NumeroCompania, empleado.NumeroEmpleado, "X");
+            }
+
+            return (rows > 0, siguienteNumero, fechaHora);
+        }
+
+        private sealed class EmpleadoCompaniaRow
+        {
+            public int NumeroCompania { get; set; }
+            public int NumeroEmpleado { get; set; }
+        }
+
+        public async Task<UltimoMovimientoMovilDto?> ObtenerUltimoMovimientoMovilAsync(int desdeNumero)
+        {
+            using var conn = _connectionFactory.CreateConnection();
+            const string query = @"SELECT TOP 1
+                r.Numero,
+                RTRIM(r.RFC) AS Rfc,
+                RTRIM(ISNULL(a.M104, '')) AS Nombre,
+                r.Numero_Compañia AS NumeroCompania,
+                r.Fecha_Hora AS FechaHora,
+                ISNULL(r.Dispositivo_Nombre, '') AS DispositivoNombre,
+                UPPER(RTRIM(r.Tipo_Movimiento)) AS TipoMovimiento
+            FROM AMN_Registros_Checador r
+            LEFT JOIN AMN a ON a.M105 = r.RFC AND a.M130 = ''
+            WHERE ISNULL(r.Dispositivo_Nombre, '') <> 'Windows Device (Sensor Fisico)'
+              AND r.Numero > @DesdeNumero
+            ORDER BY r.Numero DESC";
+
+            return await conn.QueryFirstOrDefaultAsync<UltimoMovimientoMovilDto>(query, new { DesdeNumero = desdeNumero });
         }
     }
 }

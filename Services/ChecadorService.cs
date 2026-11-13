@@ -1,5 +1,6 @@
-﻿using BioChecadorAPI.DTOs;
+using BioChecadorAPI.DTOs;
 using BioChecadorAPI.Repositories;
+using System.Globalization;
 using System.Text;
 using static BioChecadorAPI.Helpers.ChecadorHelper;
 using static BioChecadorAPI.Helpers.ResponseHelper;
@@ -15,16 +16,27 @@ namespace BioChecadorAPI.Services
         Task<ApiResponse<HistoricoAMNResponse[]>> ConsultarHistoricoAMN(HistoricoAMNDto dto);
         Task<ApiResponse<SolicitudResponseDto>> MandarSolicitudAMN(SolicitudCreacionDto dto);
         Task<ApiResponse<SolicitudResponseDto>> ConsultarSolicitudEmpleado(SolicitudCreacionDto dto);
+        Task<(int StatusCode, ApiResponse<ChecadorFisicoResponseDto> Response)> RegistrarChecadaChecadorFisicoAsync(ChecadorFisicoRequestDto dto, string userAgent);
+        Task<ApiResponse<UltimoMovimientoMovilDto?>> ObtenerUltimoMovimientoMovilAsync(int desdeNumero);
     }
 
     public class ChecadorService : IChecadorService
     {
         private readonly IAmnRepository _amnRepository;
         private readonly IPushSubscriptionStore _subStore;
-        public ChecadorService(IAmnRepository amnRepository, IPushSubscriptionStore subStore)
+        private readonly IChecadorFisicoTokenService _tokenService;
+        private readonly IChecadorFisicoPasskeyService _passkeyService;
+
+        public ChecadorService(
+            IAmnRepository amnRepository,
+            IPushSubscriptionStore subStore,
+            IChecadorFisicoTokenService tokenService,
+            IChecadorFisicoPasskeyService passkeyService)
         {
             _amnRepository = amnRepository;
             _subStore = subStore;
+            _tokenService = tokenService;
+            _passkeyService = passkeyService;
         }
 
         public async Task<ApiResponse<EstadoEmpleadoResponseDto>> VerificarRfcAsync(VerificarRfcRequestDto request)
@@ -337,6 +349,120 @@ namespace BioChecadorAPI.Services
                     Data = Array.Empty<HistoricoAMNResponse>()
                 };
             }
+        }
+
+        public async Task<(int StatusCode, ApiResponse<ChecadorFisicoResponseDto> Response)> RegistrarChecadaChecadorFisicoAsync(
+            ChecadorFisicoRequestDto dto,
+            string userAgent)
+        {
+            if (!_tokenService.ValidarToken(dto.TokenChecadorFisico))
+            {
+                return (StatusCodes.Status401Unauthorized, new ApiResponse<ChecadorFisicoResponseDto>
+                {
+                    Success = false,
+                    Message = "Token de checador físico inválido o expirado."
+                });
+            }
+
+            var validacionPasskey = await _passkeyService.ValidarAssertionAsync(dto.Passkey);
+            if (!validacionPasskey.Valido || validacionPasskey.Credencial == null)
+            {
+                return (StatusCodes.Status401Unauthorized, new ApiResponse<ChecadorFisicoResponseDto>
+                {
+                    Success = false,
+                    Message = validacionPasskey.Mensaje
+                });
+            }
+
+            string rfc = validacionPasskey.Credencial.Rfc.Trim().ToUpperInvariant();
+            string fechaHoy = DateTime.Now.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture);
+            string ultimoMovimiento = await _amnRepository.ObtenerUltimoMovimientoDiaAsync(rfc, fechaHoy);
+
+            string tipoMovimiento;
+            if (!string.IsNullOrWhiteSpace(dto.TipoMovimientoOpcional))
+            {
+                tipoMovimiento = dto.TipoMovimientoOpcional.Trim().ToUpperInvariant();
+                if (tipoMovimiento is not ("ENTRADA" or "SALIDA_COMIDA" or "ENTRADA_COMIDA" or "SALIDA"))
+                {
+                    return (StatusCodes.Status400BadRequest, new ApiResponse<ChecadorFisicoResponseDto>
+                    {
+                        Success = false,
+                        Message = "El tipo de movimiento especificado no es válido."
+                    });
+                }
+            }
+            else
+            {
+                if (ultimoMovimiento == "ENTRADA")
+                {
+                    return (StatusCodes.Status200OK, new ApiResponse<ChecadorFisicoResponseDto>
+                    {
+                        Success = true,
+                        Message = "Requiere selección de tipo de movimiento.",
+                        Data = new ChecadorFisicoResponseDto
+                        {
+                            RequiereSeleccion = true,
+                            Rfc = rfc,
+                            Opciones = new[] { "SALIDA_COMIDA", "SALIDA" }
+                        }
+                    });
+                }
+
+                tipoMovimiento = ultimoMovimiento switch
+                {
+                    "SALIDA_COMIDA" => "ENTRADA_COMIDA",
+                    "ENTRADA_COMIDA" => "SALIDA",
+                    _ => "ENTRADA"
+                };
+            }
+
+            string dispositivo = string.IsNullOrWhiteSpace(dto.DispositivoNombre)
+                ? validacionPasskey.Credencial.DispositivoNombre
+                : dto.DispositivoNombre.Trim();
+
+            var insercion = await _amnRepository.InsertarChecadaChecadorFisicoAsync(
+                rfc,
+                dto.Latitud,
+                dto.Longitud,
+                userAgent,
+                dispositivo,
+                tipoMovimiento
+            );
+
+            if (!insercion.Insertado)
+            {
+                return (StatusCodes.Status400BadRequest, new ApiResponse<ChecadorFisicoResponseDto>
+                {
+                    Success = false,
+                    Message = "No fue posible registrar la checada."
+                });
+            }
+
+            _subStore.RegistrarMovimiento(rfc, tipoMovimiento);
+
+            return (StatusCodes.Status200OK, new ApiResponse<ChecadorFisicoResponseDto>
+            {
+                Success = true,
+                Message = "Asistencia registrada correctamente.",
+                Data = new ChecadorFisicoResponseDto
+                {
+                    RequiereSeleccion = false,
+                    Rfc = rfc,
+                    TipoMovimiento = tipoMovimiento,
+                    FechaHora = insercion.FechaHora
+                }
+            });
+        }
+
+        public async Task<ApiResponse<UltimoMovimientoMovilDto?>> ObtenerUltimoMovimientoMovilAsync(int desdeNumero)
+        {
+            var registro = await _amnRepository.ObtenerUltimoMovimientoMovilAsync(desdeNumero);
+            return new ApiResponse<UltimoMovimientoMovilDto?>
+            {
+                Success = true,
+                Message = registro == null ? "Sin movimientos recientes." : "Movimiento encontrado.",
+                Data = registro
+            };
         }
     }
 }
