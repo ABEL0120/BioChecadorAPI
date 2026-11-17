@@ -32,7 +32,7 @@ namespace BioChecadorAPI.Services
                 return false;
             }
 
-            long bloqueActual = DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 30;
+            long bloqueActual = DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 60;
 
             return ValidarParaBloque(tokenBytes, bloqueActual) ||
                    ValidarParaBloque(tokenBytes, bloqueActual - 1) ||
@@ -46,7 +46,7 @@ namespace BioChecadorAPI.Services
                 return string.Empty;
             }
 
-            long bloqueObjetivo = bloque ?? (DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 30);
+            long bloqueObjetivo = bloque ?? (DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 60);
             byte[] hash = CalcularHmacBloque(bloqueObjetivo);
             return Convert.ToHexString(hash).ToLowerInvariant();
         }
