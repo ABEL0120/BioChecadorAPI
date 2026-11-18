@@ -10,7 +10,7 @@ namespace BioChecadorAPI.Services
 {
     public interface IChecadorFisicoPasskeyService
     {
-        Task<(bool Valido, string Mensaje, PasskeyCredencialDto? Credencial)> ValidarAssertionAsync(WebAuthnAssertionDto passkey);
+        Task<(bool Valido, string Mensaje, PasskeyCredencialDto? Credencial, uint SignCount)> ValidarAssertionAsync(WebAuthnAssertionDto passkey);
     }
 
     public class ChecadorFisicoPasskeyService : IChecadorFisicoPasskeyService
@@ -29,35 +29,35 @@ namespace BioChecadorAPI.Services
                 StringComparer.OrdinalIgnoreCase);
         }
 
-        public async Task<(bool Valido, string Mensaje, PasskeyCredencialDto? Credencial)> ValidarAssertionAsync(WebAuthnAssertionDto passkey)
+        public async Task<(bool Valido, string Mensaje, PasskeyCredencialDto? Credencial, uint SignCount)> ValidarAssertionAsync(WebAuthnAssertionDto passkey)
         {
             var candidatos = GenerarCandidatosCredentialId(passkey.Id, passkey.RawId);
             if (candidatos.Count == 0)
             {
-                return (false, "Identificador de credencial WebAuthn inválido.", null);
+                return (false, "Identificador de credencial WebAuthn inválido.", null, 0);
             }
 
             var credencial = await _amnRepository.ObtenerCredencialPasskeyPorIdAsync(candidatos);
             if (credencial == null)
             {
-                return (false, "Passkey no registrada o empleado inactivo.", null);
+                return (false, "Passkey no registrada o empleado inactivo.", null, 0);
             }
 
             if (!IntentarDecodificarBase64Flexible(passkey.Response.AuthenticatorData, out var authData) ||
                 !IntentarDecodificarBase64Flexible(passkey.Response.ClientDataJson, out var clientDataBytes) ||
                 !IntentarDecodificarBase64Flexible(passkey.Response.Signature, out var signatureBytes))
             {
-                return (false, "Formato inválido en los datos de aserción WebAuthn.", null);
+                return (false, "Formato inválido en los datos de aserción WebAuthn.", null, 0);
             }
 
             if (!ValidarClientData(clientDataBytes, out var mensajeClientData))
             {
-                return (false, mensajeClientData, null);
+                return (false, mensajeClientData, null, 0);
             }
 
             if (authData.Length < 37)
             {
-                return (false, "authenticatorData WebAuthn inválido.", null);
+                return (false, "authenticatorData WebAuthn inválido.", null, 0);
             }
 
             if (!string.IsNullOrWhiteSpace(_serverDomain))
@@ -65,20 +65,20 @@ namespace BioChecadorAPI.Services
                 byte[] rpIdHashEsperado = SHA256.HashData(Encoding.UTF8.GetBytes(_serverDomain));
                 if (!CryptographicOperations.FixedTimeEquals(authData.AsSpan(0, 32), rpIdHashEsperado))
                 {
-                    return (false, "El dominio RP de la Passkey no coincide con la configuración del servidor.", null);
+                    return (false, "El dominio RP de la Passkey no coincide con la configuración del servidor.", null, 0);
                 }
             }
 
             byte flags = authData[32];
             if ((flags & 0x01) == 0)
             {
-                return (false, "Presencia de usuario no verificada en la Passkey.", null);
+                return (false, "Presencia de usuario no verificada en la Passkey.", null, 0);
             }
 
             uint signCount = BinaryPrimitives.ReadUInt32BigEndian(authData.AsSpan(33, 4));
-            if (credencial.SignCount > 0 && signCount > 0 && signCount <= credencial.SignCount)
+            if (credencial.SignCount > 0 && signCount > 0 && signCount < credencial.SignCount)
             {
-                return (false, "Contador de firma WebAuthn inválido.", null);
+                return (false, "Contador de firma WebAuthn inválido.", null, 0);
             }
 
             byte[] clientDataHash = SHA256.HashData(clientDataBytes);
@@ -88,15 +88,10 @@ namespace BioChecadorAPI.Services
 
             if (!VerificarFirmaPublicKey(credencial.PublicKey, signedData, signatureBytes))
             {
-                return (false, "Firma criptográfica de la Passkey inválida.", null);
+                return (false, "Firma criptográfica de la Passkey inválida.", null, 0);
             }
 
-            if (signCount > credencial.SignCount)
-            {
-                await _amnRepository.ActualizarSignCountPasskeyAsync(credencial.Numero, signCount);
-            }
-
-            return (true, string.Empty, credencial);
+            return (true, string.Empty, credencial, signCount);
         }
 
         private bool ValidarClientData(byte[] clientDataBytes, out string mensaje)

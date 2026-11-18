@@ -438,6 +438,14 @@ namespace BioChecadorAPI.Services
                 });
             }
 
+            if (validacionPasskey.SignCount > validacionPasskey.Credencial.SignCount)
+            {
+                await _amnRepository.ActualizarSignCountPasskeyAsync(
+                    validacionPasskey.Credencial.Numero,
+                    validacionPasskey.SignCount
+                );
+            }
+
             _subStore.RegistrarMovimiento(rfc, tipoMovimiento);
 
             return (StatusCodes.Status200OK, new ApiResponse<ChecadorFisicoResponseDto>
